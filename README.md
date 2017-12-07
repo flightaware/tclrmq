@@ -298,6 +298,11 @@ The constructor takes the following arguments (all optional):
 
     Defaults to 5672
 
+* __-tls__
+
+    Either 0 or 1, but defaults to 0.  Controls whether to connect to the RabbitMQ server using TLS. To set
+    TLS options, e.g., if using a client cert, call the _tlsOptions_ method before invoking _connect_.
+
 * __-login__
 
     _Login_ object.  Defaults to calling the Login constructor with no arguments.

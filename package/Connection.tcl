@@ -101,7 +101,8 @@ oo::class create ::rmq::Connection {
 		set options(-heartbeatSecs) $::rmq::HEARTBEAT_SECS
 		set options(-blockedConnections) $::rmq::BLOCKED_CONNECTIONS
 		set options(-cancelNotifications) $::rmq::CANCEL_NOTIFICATIONS
-        set options(-debug) 0
+		set options(-tls) 0
+		set options(-debug) 0
 
 		foreach {opt val} $args {
 			if {[info exists options($opt)]} {
