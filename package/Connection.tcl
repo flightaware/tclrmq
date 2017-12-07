@@ -231,7 +231,12 @@ oo::class create ::rmq::Connection {
 		set channelsD [dict create]
 		after cancel $heartbeatID
 
-		if {$closedCB ne ""} {
+		# if we are reconnecting, do not want to call this
+		# too many times so we check the reconnecting flag
+		# this way, the first disconnection will invoke this
+		# but not every subsequent one
+		# then, if reconnects fail, a separate callback is used
+		if {$closedCB ne "" && !$reconnecting} {
 			$closedCB [self] $closeD
 		}
 	}
@@ -524,7 +529,10 @@ oo::class create ::rmq::Connection {
 	method readFrame {} {
 		if {[eof $sock]} {
 			::rmq::debug "Reached EOF reading from socket"
-			return [my closeConnection]
+			if {$autoReconnect} {
+
+			} else {
+				return [my closeConnection]
 		}
 
 		try {
