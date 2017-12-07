@@ -336,6 +336,7 @@ namespace eval rmq {
 		if {$mID eq $::rmq::BASIC_RECOVER_ASYNC} {return RecoverAsync}
 		if {$mID eq $::rmq::BASIC_RECOVER} {return Recover}
 		if {$mID eq $::rmq::BASIC_RECOVER_OK} {return RecoverOk}
+		if {$mID eq $::rmq::BASIC_NACK} {return NackReceived}
 	}
 
 	proc dec_confirm_method {mID} {

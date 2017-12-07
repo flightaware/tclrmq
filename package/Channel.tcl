@@ -926,6 +926,23 @@ oo::define ::rmq::Channel {
 		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
 	}
 
+	method basicNackReceived {data} {
+		set deliveryTag [::rmq::dec_ulong_long $data bytes]
+
+		# If the multiple field is 1, and the delivery tag is zero,
+		# this indicates rejection of all outstanding messages.
+		set multiple [::rmq::dec_byte [string range $data $bytes end] _]
+		::rmq::debug "Basic.Nack received for $deliveryTag with multiple ($multiple)"
+
+		# there is also a requeue bit in the data but the spec says
+		# "Clients receiving the Nack methods should ignore this flag."
+
+		set bNackCB [my getCallback basicNack]
+		if {$bNackCB ne ""} {
+			$bNackCB [self] $deliveryTag $multiple
+		}
+	}
+
 	method basicQosOk {data} {
 		::rmq::debug "Basic.QosOk"
 
