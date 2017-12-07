@@ -209,13 +209,13 @@ oo::class create ::rmq::Channel {
 		dict set callbacksD $amqpMethod $cb
 	}
 
-    method onConnect {cb} {
-        set openCB $cb
-    }
+	method onConnect {cb} {
+		set openCB $cb
+	}
 
-    method onConnected {cb} {
-        set openCB $cb
-    }
+	method onConnected {cb} {
+		set openCB $cb
+	}
 
 	method onOpen {cb} {
 		set openCB $cb

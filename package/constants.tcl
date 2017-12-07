@@ -274,13 +274,24 @@ namespace eval rmq {
 	set MAX_CHANNELS [expr {2**16} - 1]
 	set DEFAULT_CHANNEL_MAX 0
 
+	# Auto-reconnect with exponential backoff constants
+	set DEFAULT_AUTO_RECONNECT 1
+	set DEFAULT_MAX_BACKOFF 64
+	set DEFAULT_MAX_RECONNECT_ATTEMPTS 5
+
+	# Timeout threshold in seconds for trying to connect
+	set DEFAULT_MAX_TIMEOUT 3
+
+	# How many msecs to check for active connection
+	set CHECK_CONNECTION 1500
+
 	# Version supported by the library
 	set AMQP_VMAJOR 0
 	set AMQP_VMINOR 9
 
 	# client properties
 	set PRODUCT "Tcl RabbitMQ Client Library"
-	set VERSION "1.0.2"
+	set VERSION "1.1.0"
 }
 
 # vim: ts=4:sw=4:sts=4:noet

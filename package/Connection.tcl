@@ -79,21 +79,33 @@ oo::class create ::rmq::Connection {
 	# whether to use TLS for the socket connection
 	variable tls
 	variable tlsOpts
+	
+	# whether to try and auto-reconnect when connection forcibly
+	# closed by the remote side or the network
+	# maximum number of exponential backoff attempts to try
+	# maximum retry attempts
+	# whether we are trying to actively reconnect
+	variable autoReconnect
+	variable maxBackoff
+	variable maxReconnects
+	variable reconnecting
 
 	##
 	##
 	## callbacks
 	##
 	##
+	variable blockedCB
 	variable connectedCB
 	variable closedCB
 	variable errorCB
-	variable blockedCB
+	variable failedReconnectCB
 
 	constructor {args} {
 		array set options {}
 		set options(-host) $::rmq::DEFAULT_HOST
 		set options(-port) $::rmq::DEFAULT_PORT
+		set options(-tls) 0
 		set options(-login) [::rmq::Login new]
 		set options(-frameMax) $::rmq::MAX_FRAME_SIZE
 		set options(-maxChannels) $::rmq::DEFAULT_CHANNEL_MAX
@@ -101,7 +113,10 @@ oo::class create ::rmq::Connection {
 		set options(-heartbeatSecs) $::rmq::HEARTBEAT_SECS
 		set options(-blockedConnections) $::rmq::BLOCKED_CONNECTIONS
 		set options(-cancelNotifications) $::rmq::CANCEL_NOTIFICATIONS
-		set options(-tls) 0
+		set options(-maxTimeout) $::rmq::DEFAULT_MAX_TIMEOUT
+		set options(-autoReconnect) $::rmq::DEFAULT_AUTO_RECONNECT
+		set options(-maxBackoff) $::rmq::DEFAULT_MAX_BACKOFF
+		set options(-maxReconnects) $::rmq::DEFAULT_MAX_RECONNECT_ATTEMPTS
 		set options(-debug) 0
 
 		foreach {opt val} $args {
@@ -136,6 +151,9 @@ oo::class create ::rmq::Connection {
 
 		# book-keeping for frame processing
 		set partialFrame ""
+		
+		# whether we are attempting to reconnect
+		set reconnecting 0
 
 		# heartbeat setup
 		set lastRead 0
@@ -143,14 +161,48 @@ oo::class create ::rmq::Connection {
 		set heartbeatID ""
 
 		# callbacks
+		set blockedCB ""
 		set connectedCB ""
 		set closedCB ""
 		set errorCB ""
-		set blockedCB ""
+		set failedReconnectCB ""
 	}
 
 	destructor {
 		catch {close $sock}
+	}
+
+	# attempt to reconnect to the server using
+	# exponential backoff
+	#
+	# this is triggered when the check connection method
+	# detects that the socket has gone down
+	#
+	# if auto reconnection is not desired this method can
+	# be called in the closed callback or equivalent place
+	method attemptReconnect {} {
+		::rmq::debug "Attempting auto-reconnect with exponential backoff for first time"
+		set reconnecting 1
+		set retries 0
+		while {$retries < $maxReconnects} {
+			if {[my connect]} {
+				set reconnecting 0
+				return
+			}
+
+			set waitTime [expr {(2**$retries) * 1000 + [::rmq::rand_int 1 1000]}]
+			set waitTime [expr {min($waitTime, $maxBackoff * 1000)}]
+
+			incr retries
+			::rmq::debug "After $waitTime msecs, attempting reconnect for ($retries time(s))..."
+
+			after $waitTime
+		}
+
+		::rmq::debug "Unable to successfully reconnect, not attempting any more..."
+		if {$failedReconnectCB ne ""} {
+			$failedReconnectCB [self]
+		}
 	}
 
 	#
@@ -159,7 +211,7 @@ oo::class create ::rmq::Connection {
 	#
 	method checkConnection {} {
 		if {$sock ne "" && ![catch {eof $sock} err] && !$err} {
-			after 500 [list [self] checkConnection]
+			after $::rmq::CHECK_CONNECTION [list [self] checkConnection]
 		} else {
 			my closeConnection
 		}
@@ -195,17 +247,42 @@ oo::class create ::rmq::Connection {
 		# create the socket and configure accordingly
 		try {
 			if {!$tls} {
-				set sock [socket $host $port]
+				set sock [socket -async $host $port]
 			} else {
 				set tlsParams [array get tlsOpts]
                 ::rmq::debug "Making TLS connection with options: [array get tlsOpts]"
-				set sock [tls::socket {*}[concat [array get tlsOpts] [list $host $port]]]
+				set sock [tls::socket {*}[concat [array get tlsOpts] [list -async $host $port]]]
 			}
 		} on error {result options} {
-			::rmq::debug "Error connecting to server: '$result'"
-			return [my closeConnection]
+			# when using -async this is reached when a DNS lookup fails
+			::rmq::debug "Error connecting to $host:$port '$result'"
+			my closeConnection
+			return 0
 		}
 
+		# since we connected using -async, need to wait for a possible timeout
+		# once the socket is connected the writable event will fire and we move on
+		# otherwise we use after to trigger a forceful cancel of the connection
+		fileevent $sock writable [list set ::rmq::connectTimeout 1]
+		set timeoutID [after [expr {$maxTimeout * 1000}] \
+							 [list set :rmq::connectTimeout 1]]
+		vwait ::rmq::connectTimeout
+
+		# potentially reconnect after a timeout
+		# otherwise, unset the writable handler, cancel the timeout check
+		# fconfigure the socket, and move on with something useful
+		if {[fconfigure $sock -connecting]} {
+			my closeConnection
+			set err [fconfigure $sock -error]
+			::rmq::debug "Connection timed out (-error $err) connecting to $host:$port"
+			if {$autoReconnect && !$reconnecting} {
+				after idle [list [self] attemptReconnect]
+			}
+			return 0
+		}
+
+		fileevent $sock writable ""
+		after cancel $timeoutID
 		fconfigure $sock \
 			-blocking 0 \
 			-buffering none \
@@ -214,14 +291,18 @@ oo::class create ::rmq::Connection {
 
 		# mark the object variables for connection status
 		set connected 1
-		after 500 [list [self] checkConnection]
 
 		# setup a readable callback
 		fileevent $sock readable [list [self] readFrame]
 
+		# periodically monitor for connection status
+		after $::rmq::CHECK_CONNECTION [list [self] checkConnection]
+
 		# send the protocol header
 		my send [::rmq::enc_protocol_header]
 		::rmq::debug "Sent protocol header"
+
+		return 1
 	}
 
 	method connected? {} {
@@ -287,6 +368,14 @@ oo::class create ::rmq::Connection {
 	#
 	method onError {cb} {
 		set errorCB $cb
+	}
+
+	#
+	# set a callback for when an attempt to reconnect to the server
+	# fails after the maximum number of retries
+	#
+	method onFailedReconnect {cb} {
+		set failedReconnectCB $cb
 	}
 
 	#
@@ -434,7 +523,7 @@ oo::class create ::rmq::Connection {
 	#
 	method readFrame {} {
 		if {[eof $sock]} {
-			::rmq::debug "Reached EOF on socket"
+			::rmq::debug "Reached EOF reading from socket"
 			return [my closeConnection]
 		}
 

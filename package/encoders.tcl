@@ -32,19 +32,19 @@ namespace eval rmq {
 	#
 	# enc_field_table - given a dict, convert it into a field
 	#  table binary string
-    #  this proc attempts to convert any values passed to it
-    #  using the string is command
-    #  integers below 2**16 - 1 will be encoded as a ushort
-    #  all other integers as a long with every integer value
-    #  assumed to be unsigned
-    #  all double values will be converted to a float
-    #  booleans are checked after ints and doubles, so a textual
-    #  true or false value must be used to get a boolean conversion
-    #  strings less than or equal to 128 chars are short strings
-    #  all other strings encoded as long strings
-    #
-    #  takes an optional second argument to ignore certain fields
-    #  if the type recognition offered by the proc is insufficient
+	#  this proc attempts to convert any values passed to it
+	#  using the string is command
+	#  integers below 2**16 - 1 will be encoded as a ushort
+	#  all other integers as a long with every integer value
+	#  assumed to be unsigned
+	#  all double values will be converted to a float
+	#  booleans are checked after ints and doubles, so a textual
+	#  true or false value must be used to get a boolean conversion
+	#  strings less than or equal to 128 chars are short strings
+	#  all other strings encoded as long strings
+	#
+	#  takes an optional second argument to ignore certain fields
+	#  if the type recognition offered by the proc is insufficient
 	#
 	proc enc_field_table {fieldD {skipKeys ""}} {
 		set fieldStr ""
@@ -78,15 +78,6 @@ namespace eval rmq {
 
 		return "${fieldStrLen}${fieldStr}"
 	}
-
-    proc enc_basic_properties {props} {
-		set fieldStr ""
-		dict for {k v} $fieldD {
-
-        }
-		set fieldStrLen [::rmq::enc_ulong [string length $fieldStr]]
-		return "${fieldStrLen}${fieldStr}"
-    }
 
 	#
 	# enc_field_value - given a textual description of a field table
@@ -211,10 +202,6 @@ namespace eval rmq {
 		set propFlags [::rmq::enc_short $propFlags]
 
 		return ${propFlags}${props}
-	}
-
-	proc enc_error {eCode} {
-
 	}
 }
 

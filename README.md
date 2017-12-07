@@ -105,6 +105,8 @@ Connection objects allow for the setting of the following callbacks:
 3) _onError_: called when an error code has been sent to the _Connection_ and is passed
               the error code and any accompanying data in the frame
 
+4) _onFailedReconnect_: called when all reconnection attempts have been exhausted
+
 ```tcl
 package require rmq
 
@@ -139,7 +141,7 @@ callback mechanism for the majority of AMQP method calls.
 
 ### Specific Callbacks
 
-The specific callbacks provided for Channel objects mirror those available for _Connection_
+The specific callbacks provided for _Channel_ objects mirror those available for _Connection_
 objects.  They are:
 
 1) _onOpen_: called when the channel is open and ready to use, i.e., when the Channel.Open-Ok
@@ -331,9 +333,29 @@ The constructor takes the following arguments (all optional):
 
     Either 0 or 1, but deafults to 1.  Controls whether to use this [RabbitMQ extension](https://www.rabbitmq.com/specification.html).
 
+* __-maxTimeout__
+
+    Integer seconds to wait before timing out the connection attempt to the server.  Defaults to 3.
+
+* __-autoReconnect__
+
+    Either 0 or 1, but defaults to 1.  Controls whether the library attempts to reconnect to the RabbitMQ server when the initial call to _Connection.connect_ fails or an established socket connection is closed by the server or by network conditions.
+
+* __-maxBackoff__
+
+    Integer number of seconds past which [exponential backoff](https://cloud.google.com/storage/docs/exponential-backoff), which is the reconnection strategy employed, will not go.  Defaults to 64 seconds.
+
+* __-maxReconnects__
+
+    Integer number of reconnects to attempt before giving up.  Defaults to 5.
+
 * __-debug__
 
     Either 0 or 1, but defaults to 0.  Controls whether or not debug statements are printed to stderr detailing the operations of the library.
+
+### attemptReconnect
+
+Takes no arguments.  Using the _-maxBackoff_ and _-maxReconnects_ constructor arguments, attempts to reconnect to the server.  If this cannot be done, and an _onFailedReconnect_ callback has been set, it is invoked.
 
 ### closeConnection
 
@@ -381,6 +403,10 @@ object is ready to create channels and perform useful work.
 
 Takes the name of a callback proc used when an error is reported by the RabbitMQ server on the connection level.  The callback proc takes
 the _Connection_ object, a frame type and any extra data included in the frame.
+
+### onFailedReconnect
+
+Takes the name of a callback proc used when the maximum number of connection attempts have been made without sucess.  The callback proc takes the __Connection__ object.
 
 ### tlsOptions
 
@@ -854,7 +880,8 @@ Takes the following arguments:
 
     - NACK_REQUEUE
 
-No callback can be set for this method.
+Setting a callback on this method using the _on_ method is for publisher confirms.  The callback takes the _Channel_
+object, a delivery tag and a multiple boolean.
 
 #### basicQos
 
