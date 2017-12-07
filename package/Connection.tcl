@@ -494,18 +494,20 @@ oo::class create ::rmq::Connection {
 		set sinceLastSend [expr {$now - $lastSend}]
 		::rmq::debug "Heartbeat: $sinceLastRead secs since last read and $sinceLastSend secs since last send"
 
-		if {$sinceLastSend >= $heartbeatSecs} {
+		# since we check whether to send a heartbeat every heartbeatSecs / 2 secs
+		# need to check if we'd be over the heartbeat interval at the end of the
+		# after wait if we did not send a heartbeat right now
+		if {$sinceLastSend >= $heartbeatSecs >> 1} {
 			::rmq::debug "Sending heartbeat frame"
 			my send [::rmq::enc_frame $::rmq::FRAME_HEARTBEAT 0 ""]
 		}
 
-		if {$sinceLastRead >= 2 * $heartbeatSecs} {
+		# despite being able to send data on the socket, if we haven't heard anything
+		# from the server for > 2 heartbeat intervals, we need to disconnect
+		if {$sinceLastRead > 2 * $heartbeatSecs} {
 			::rmq::debug "Been more than 2 heartbeat intervals without socket read activity, shutting down connection"
 			return [my closeConnection]
 		}
-
-		# schedule the next invocation
-		set heartbeatID [after [expr {1000 * $heartbeatSecs}] [list [self] sendHeartbeat]]
 	}
 
 	#
@@ -696,6 +698,7 @@ oo::define ::rmq::Connection {
 		}
 
 		set heartbeat [::rmq::dec_ushort [string range $data 6 end] _]
+		::rmq::debug "Heartbeat interval of $heartbeat secs suggested by the server"
 		my connectionTuneOk $channelMax $frameMax $heartbeat
 	}
 
@@ -712,7 +715,7 @@ oo::define ::rmq::Connection {
 
 		# after heartbeats have been negotiated, setup a loop to send them
 		if {$heartbeatSecs != 0} {
-			set heartbeatID [after [expr {1000 * $heartbeatSecs}] [list [self] sendHeartbeat]]
+			set heartbeatID [after [expr {1000 * $heartbeatSecs / 2}] [list [self] sendHeartbeat]]
 		}
 
 		my connectionOpen
