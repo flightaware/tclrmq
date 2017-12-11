@@ -283,7 +283,7 @@ namespace eval rmq {
 	set DEFAULT_MAX_TIMEOUT 3
 
 	# How many msecs to check for active connection
-	set CHECK_CONNECTION 1500
+	set CHECK_CONNECTION 500
 
 	# Version supported by the library
 	set AMQP_VMAJOR 0
@@ -291,7 +291,7 @@ namespace eval rmq {
 
 	# client properties
 	set PRODUCT "Tcl RabbitMQ Client Library"
-	set VERSION "1.2.1"
+	set VERSION "1.2.2"
 }
 
 # vim: ts=4:sw=4:sts=4:noet

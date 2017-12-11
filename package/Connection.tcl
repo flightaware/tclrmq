@@ -258,6 +258,13 @@ oo::class create ::rmq::Connection {
                 ::rmq::debug "Making TLS connection with options: [array get tlsOpts]"
 				set sock [tls::socket {*}[concat [array get tlsOpts] [list -async $host $port]]]
 			}
+
+			# configure the socket
+			fconfigure $sock \
+				-blocking 0 \
+				-buffering none \
+				-encoding binary \
+				-translation binary
 		} on error {result options} {
 			# when using -async this is reached when a DNS lookup fails
 			::rmq::debug "Error connecting to $host:$port '$result'"
@@ -281,23 +288,19 @@ oo::class create ::rmq::Connection {
 			set err [fconfigure $sock -error]
 			::rmq::debug "Connection timed out (-error $err) connecting to $host:$port"
 			if {$autoReconnect && !$reconnecting} {
-				after idle [list [self] attemptReconnect]
+				after idle [after 0 [list [self] attemptReconnect]]
 			}
 			return 0
+		} else {
+			# we're connected, do not detect timeout
+			fileevent $sock writable ""
+			after cancel $timeoutID
 		}
-
-		fileevent $sock writable ""
-		after cancel $timeoutID
-		fconfigure $sock \
-			-blocking 0 \
-			-buffering none \
-			-encoding binary \
-			-translation binary
 
 		# mark the object variables for connection status
 		set connected 1
 
-		# setup a readable callback
+		# setup a readable callback for parsing rmq data
 		fileevent $sock readable [list [self] readFrame]
 
 		# periodically monitor for connection status
@@ -530,7 +533,8 @@ oo::class create ::rmq::Connection {
 		if {[eof $sock]} {
 			::rmq::debug "Reached EOF reading from socket"
 			if {$autoReconnect} {
-
+				my closeConnection 
+				return [my attemptReconnect]
 			} else {
 				return [my closeConnection]
 		}
@@ -539,7 +543,12 @@ oo::class create ::rmq::Connection {
 			set data [read $sock $frameMax]
 		} on error {result options} {
 			::rmq::debug "Error reading from socket"
-			return [my closeConnection]
+			if {$autoReconnect} {
+				my closeConnection
+				return [my attemptReconnect]
+			} else {
+				return [my closeConnection]
+			}	
 		}
 
 		if {$data ne ""} {
@@ -605,6 +614,9 @@ oo::class create ::rmq::Connection {
 			::rmq::debug "Been more than 2 heartbeat intervals without socket read activity, shutting down connection"
 			return [my closeConnection]
 		}
+
+		# set another timer for this method
+		set heartbeatID [after [expr {1000 * $heartbeatSecs / 2}] [list [self] sendHeartbeat]]
 	}
 
 	#
@@ -643,9 +655,9 @@ oo::class create ::rmq::Connection {
 
 	#
 	# set TLS options for connecting to RabbitMQ
-    # supports all arguments supported by tls::import
-    # as detailed at:
-    #   http://tls.sourceforge.net/tls.htm
+	# supports all arguments supported by tls::import
+	# as detailed at:
+	#   http://tls.sourceforge.net/tls.htm
 	#
 	method tlsOptions {args} {
 		if {[llength $args] & 1} {
