@@ -291,7 +291,7 @@ namespace eval rmq {
 
 	# client properties
 	set PRODUCT "Tcl RabbitMQ Client Library"
-	set VERSION "1.2.2"
+	set VERSION "1.2.3"
 }
 
 # vim: ts=4:sw=4:sts=4:noet
