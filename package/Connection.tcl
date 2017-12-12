@@ -76,15 +76,15 @@ oo::class create ::rmq::Connection {
 	variable heartbeatSecs
 	variable heartbeatID
 
-	# whether to use TLS for the socket connection
+	# Whether to use TLS for the socket connection
 	variable tls
 	variable tlsOpts
 	
-	# whether to try and auto-reconnect when connection forcibly
+	# Whether to try and auto-reconnect when connection forcibly
 	# closed by the remote side or the network
-	# maximum number of exponential backoff attempts to try
-	# maximum retry attempts
-	# whether we are trying to actively reconnect
+	# Maximum number of exponential backoff attempts to try
+	# Maximum retry attempts
+	# Are we trying to actively reconnect
 	variable autoReconnect
 	variable maxBackoff
 	variable maxReconnects
@@ -181,10 +181,10 @@ oo::class create ::rmq::Connection {
 	# if auto reconnection is not desired this method can
 	# be called in the closed callback or equivalent place
 	method attemptReconnect {} {
-		::rmq::debug "Attempting auto-reconnect with exponential backoff for first time"
+		::rmq::debug "Attempting auto-reconnect with exponential backoff"
 		set reconnecting 1
 		set retries 0
-		while {$retries < $maxReconnects} {
+		while {$maxReconnects == 0 || $retries < $maxReconnects} {
 			if {[my connect]} {
 				set reconnecting 0
 				return
@@ -194,7 +194,7 @@ oo::class create ::rmq::Connection {
 			set waitTime [expr {min($waitTime, $maxBackoff * 1000)}]
 
 			incr retries
-			::rmq::debug "After $waitTime msecs, attempting reconnect for ($retries time(s))..."
+			::rmq::debug "After $waitTime msecs, attempting reconnect ($retries time(s))..."
 
 			after $waitTime
 		}
@@ -210,9 +210,11 @@ oo::class create ::rmq::Connection {
 	# still connected by catching any error on the eof proc
 	#
 	method checkConnection {} {
-		if {$sock ne "" && ![catch {eof $sock} err] && !$err} {
+		try {
+			eof $sock
 			after $::rmq::CHECK_CONNECTION [list [self] checkConnection]
-		} else {
+		} on error {result options} {
+			::rmq::debug "When testing EOF on socket: '$result'"
 			my closeConnection
 		}
 	}
@@ -277,7 +279,7 @@ oo::class create ::rmq::Connection {
 		# otherwise we use after to trigger a forceful cancel of the connection
 		fileevent $sock writable [list set ::rmq::connectTimeout 1]
 		set timeoutID [after [expr {$maxTimeout * 1000}] \
-							 [list set :rmq::connectTimeout 1]]
+							 [list set ::rmq::connectTimeout 1]]
 		vwait ::rmq::connectTimeout
 
 		# potentially reconnect after a timeout
@@ -292,7 +294,7 @@ oo::class create ::rmq::Connection {
 			}
 			return 0
 		} else {
-			# we're connected, do not detect timeout
+			# we're connected, no need to detect timeout 
 			fileevent $sock writable ""
 			after cancel $timeoutID
 		}
@@ -303,8 +305,11 @@ oo::class create ::rmq::Connection {
 		# setup a readable callback for parsing rmq data
 		fileevent $sock readable [list [self] readFrame]
 
-		# periodically monitor for connection status
-		after $::rmq::CHECK_CONNECTION [list [self] checkConnection]
+		# periodically monitor for connection status if heartbeats
+		# disabled
+		if {$heartbeatSecs == 0} {
+			after $::rmq::CHECK_CONNECTION [list [self] checkConnection]
+		}
 
 		# send the protocol header
 		my send [::rmq::enc_protocol_header]
@@ -604,7 +609,7 @@ oo::class create ::rmq::Connection {
 		# need to check if we'd be over the heartbeat interval at the end of the
 		# after wait if we did not send a heartbeat right now
 		if {$sinceLastSend >= $heartbeatSecs >> 1} {
-			::rmq::debug "Sending heartbeat frame"
+			::rmq::debug "Sending heartbeat frame: long enough since last send" 
 			my send [::rmq::enc_frame $::rmq::FRAME_HEARTBEAT 0 ""]
 		}
 
@@ -824,6 +829,7 @@ oo::define ::rmq::Connection {
 
 		# after heartbeats have been negotiated, setup a loop to send them
 		if {$heartbeatSecs != 0} {
+			::rmq::debug "Scheduling first heartbeat check..."
 			set heartbeatID [after [expr {1000 * $heartbeatSecs / 2}] [list [self] sendHeartbeat]]
 		}
 

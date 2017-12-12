@@ -347,7 +347,7 @@ The constructor takes the following arguments (all optional):
 
 * __-maxReconnects__
 
-    Integer number of reconnects to attempt before giving up.  Defaults to 5.
+    Integer number of reconnects to attempt before giving up.  Defaults to 5.  A value of 0 means infinite reconnects.  To disable retries, pass _-autoReconnect_ as 0.
 
 * __-debug__
 
