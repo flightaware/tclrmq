@@ -225,6 +225,10 @@ proc consume_callback {rmqChan methodD frameD data} {
 }
 ```
 
+#### Consuming From Multiple Queues
+
+For a given channel, multiple queues can be consumed from and each queue can be given its own callback proc by passing in (or allowing the server to generate) a distinct _consumerTag_ for each invocation of _basicConsume_.  Otherwise, dispatching based on the method or frame metadata allows a single callback proc to customize the handling of messages from different queues.  When the client application is not constrained in its use of channels, instantiating multiple _Channel_ objects is a straight-forward way for one consumer to concurrently pull data from more than one queue.
+
 ### Method Data
 
 The dictionary of method data passed as the second argument to consumer callbacks contains the following items:
