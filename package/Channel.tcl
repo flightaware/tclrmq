@@ -768,11 +768,14 @@ oo::define ::rmq::Channel {
 
 	method basicConsumeOk {data} {
 		set cTag [::rmq::dec_short_string $data _]
+		::rmq::debug "Basic.ConsumeOk (consumer tag: $cTag)"
+
+		# if just learned the consumer tag, update callbacks array
 		if {[info exists consumerCBs("")]} {
+			::rmq::debug "With server generated consumer tag, unsetting empty callback key"	
 			set consumerCBs($cTag) $consumerCBs("")
 			unset consumerCBs("")
 		}
-		::rmq::debug "Basic.ConsumeOk (consumer tag: $cTag)"
 
 		set bConsumeCB [my getCallback basicConsumeOk]
 		if {$bConsumeCB ne ""} {
