@@ -80,6 +80,7 @@ oo::class create ::rmq::Channel {
 		set methodData [dict create]
 		set frameData [dict create]
 		set receivedData ""
+		array set consumerCBs {}
 		set consumerCBArgs [list]
 		set lastBasicMethod ""
 
@@ -145,8 +146,9 @@ oo::class create ::rmq::Channel {
 			set receivedData ""
 
 			# invoke the callback
-			if {$lastBasicMethod eq "consume"} {
-				my callback basicDeliver {*}$consumerCBArgs
+			if {$lastBasicMethod eq "deliver"} {
+				set cTag [dict get [lindex $consumerCBArgs 0] consumerTag]
+				$consumerCBs($cTag) [self] {*}$consumerCBArgs
 			} elseif {$lastBasicMethod eq "get"} {
 				my callback basicDeliver {*}$consumerCBArgs
 			} elseif {$lastBasicMethod eq "return"} {
@@ -705,6 +707,7 @@ oo::define ::rmq::Channel {
 	variable methodData
 	variable frameData
 	variable receivedData
+	variable consumerCBs
 	variable consumerCBArgs
 
 	method basicAck {deliveryTag {multiple 0}} {
@@ -742,13 +745,13 @@ oo::define ::rmq::Channel {
 
 		# setup for the callback
 		my setCallback basicDeliver $callback
-		set lastBasicMethod consume
+		set consumerCBs($cTag) $callback
 
 		set reserved [::rmq::enc_short 0]
 		set qName [::rmq::enc_short_string $qName]
 		set cTag [::rmq::enc_short_string $cTag]
 
-        # no-local, no-ack, exclusive, no-wait
+		# no-local, no-ack, exclusive, no-wait
 		set flags 0
 		foreach cFlag $cFlags {
 			set flags [expr {$flags | $cFlag}]
@@ -765,6 +768,10 @@ oo::define ::rmq::Channel {
 
 	method basicConsumeOk {data} {
 		set cTag [::rmq::dec_short_string $data _]
+		if {[info exists consumerCBs("")]} {
+			set consumerCBs($cTag) $consumerCBs("")
+			unset consumerCBs("")
+		}
 		::rmq::debug "Basic.ConsumeOk (consumer tag: $cTag)"
 
 		set bConsumeCB [my getCallback basicConsumeOk]
@@ -785,7 +792,8 @@ oo::define ::rmq::Channel {
 		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
 
 		# unset any get or deliver callbacks
-		my removeCallback basicDeliver
+		array unset consumerCBs
+		my removeCallback basicReturn
 		my removeCallback basicGet
 	}
 
@@ -805,7 +813,8 @@ oo::define ::rmq::Channel {
 
 		::rmq::debug "Basic.Cancel received for consumer tag $cTag"
 
-		my removeCallback basicDeliver
+		array unset consumerCBs
+		my removeCallback basicReturn
 		my removeCallback basicGet
 
 		set bCancelCB [my getCallback basicCancel]
@@ -839,6 +848,7 @@ oo::define ::rmq::Channel {
 			redelivered $redelivered \
 			exchange $eName \
 			routingKey $rKey]
+		set lastBasicMethod deliver
 	}
 
 	method basicGet {callback qName {noAck 1}} {
@@ -864,6 +874,7 @@ oo::define ::rmq::Channel {
 
 		# save an empty method data dict for this case
 		set methodData [dict create]
+		set lastBasicMethod get
 	}
 
 	method basicGetOk {data} {
@@ -891,7 +902,7 @@ oo::define ::rmq::Channel {
 			exchange $eName \
 			routingKey $rKey \
 			messageCount $msgCount]
-
+		set lastBasicMethod get
 	}
 
 	method basicQos {prefetchCount {globalQos 0}} {

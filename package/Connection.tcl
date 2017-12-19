@@ -224,12 +224,17 @@ oo::class create ::rmq::Connection {
 	#
 	method closeConnection {} {
 		::rmq::debug "Closing connection"
-		catch {
+		try {
 			fileevent $sock readable ""
 			close $sock
+		} on error {result options} {
+			::rmq::debug "Close connection error: '$result'"
 		}
 
+		# reset all necessary variables
 		set connected 0
+		set lastRead 0
+		set lastSend 0
 		set channelsD [dict create]
 		after cancel $heartbeatID
 
