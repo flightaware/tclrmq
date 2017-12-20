@@ -6,11 +6,12 @@ package require tls
 namespace eval rmq {
 	namespace export Connection
 
-    proc debug {msg} {
-        if {$::rmq::debug} {
-            puts stderr "\[DEBUG\]: $msg"
-        }
-    }
+	proc debug {msg} {
+		if {$::rmq::debug} {
+			set ts [clock format [clock seconds] -format "%D %T" -gmt 1]
+            puts stderr "\[DEBUG\] ($ts): $msg"
+		}
+	}
 
 	# return random integer in [start, end]	
 	proc rand_int {start end} {
