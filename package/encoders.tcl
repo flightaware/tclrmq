@@ -1,11 +1,11 @@
 ##
 ##
 ## encoders.tcl - procs in the rmq namespace for encoding Tcl values
-##  into binary values, i.e., strings of raw bytes, suitable for
-##  sending to a RabbitMQ server
+##	into binary values, i.e., strings of raw bytes, suitable for
+##	sending to a RabbitMQ server
 ##
-##  before sending any data across the network, the Tcl representation
-##  will pass through a proc contained in this file
+##	before sending any data across the network, the Tcl representation
+##	will pass through a proc contained in this file
 ##
 ##
 package provide rmq 1.0
@@ -49,27 +49,27 @@ namespace eval rmq {
 	proc enc_field_table {fieldD {skipKeys ""}} {
 		set fieldStr ""
 		dict for {k v} $fieldD {
-            if {$k in $skipKeys} {
-                set v $v
-            } elseif {[string is integer -strict $v]} {
-                if {$v <= 2**8 - 1} {
-                    set v [::rmq::enc_byte $v]
-                } elseif {$v <= 2**16 - 1} {
-                    set v [::rmq::enc_ushort $v]
-                } else {
-                    set v [::rmq::enc_ulong $v]
-                }
-            } elseif {[string is double -strict $v]} {
-                set v [::rmq::enc_float $v]
-            } elseif {[string is boolean -strict $v]} {
-                set v [::rmq::enc_boolean $v]
-            } elseif {[string is alnum $v]} {
-                if {[string length $v] <= 128} {
-                    set v [::rmq::enc_short_string $v]
-                } else {
-                    set v [::rmq::enc_long_string $v]
-                }
-            }
+			if {$k in $skipKeys} {
+				set v $v
+			} elseif {[string is integer -strict $v]} {
+				if {$v <= 2**8 - 1} {
+					set v [::rmq::enc_byte $v]
+				} elseif {$v <= 2**16 - 1} {
+					set v [::rmq::enc_ushort $v]
+				} else {
+					set v [::rmq::enc_ulong $v]
+				}
+			} elseif {[string is double -strict $v]} {
+				set v [::rmq::enc_float $v]
+			} elseif {[string is boolean -strict $v]} {
+				set v [::rmq::enc_boolean $v]
+			} elseif {[string is alnum $v]} {
+				if {[string length $v] <= 128} {
+					set v [::rmq::enc_short_string $v]
+				} else {
+					set v [::rmq::enc_long_string $v]
+				}
+			}
 
 			append fieldStr "[::rmq::enc_short_string $k]$v"
 		}

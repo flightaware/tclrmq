@@ -104,9 +104,9 @@ oo::class create ::rmq::Channel {
 		}
 	}
 
-    method closeConnection {} {
-        $connection closeConnection
-    }
+	method closeConnection {} {
+		$connection closeConnection
+	}
 
 	method closing? {} {
 		return $closing
@@ -554,7 +554,7 @@ oo::define ::rmq::Channel {
 		# queue name
 		set qName [::rmq::enc_short_string $qName]
 
-        # passive, durable, exclusive, auto-delete, no-wait
+		# passive, durable, exclusive, auto-delete, no-wait
 		set flags 0
 		foreach qFlag $qFlags {
 			set flags [expr {$flags | $qFlag}]
@@ -928,7 +928,7 @@ oo::define ::rmq::Channel {
 
 		set deliveryTag [::rmq::enc_ulong_long $deliveryTag]
 
-        # multiple, requeue
+		# multiple, requeue
 		set flags 0
 		foreach nackFlag $nackFlags {
 			set flags [expr {$flags | $nackFlag}]
@@ -974,7 +974,7 @@ oo::define ::rmq::Channel {
 		set eName [::rmq::enc_short_string $eName]
 		set rKey [::rmq::enc_short_string $rKey]
 
-        # mandatory, immediate
+		# mandatory, immediate
 		set flags 0
 		foreach pFlag $pFlags {
 			set flags [expr {$flags | $pFlag}]

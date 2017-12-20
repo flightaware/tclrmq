@@ -9,7 +9,7 @@ namespace eval rmq {
 	proc debug {msg} {
 		if {$::rmq::debug} {
 			set ts [clock format [clock seconds] -format "%D %T" -gmt 1]
-            puts stderr "\[DEBUG\] ($ts): $msg"
+			puts stderr "\[DEBUG\] ($ts): $msg"
 		}
 	}
 
@@ -136,8 +136,8 @@ oo::class create ::rmq::Connection {
 			set [string trimleft $opt -] $options($opt)
 		}
 
-        # whether we are in debug mode
-        set ::rmq::debug $debug
+		# whether we are in debug mode
+		set ::rmq::debug $debug
 
 		# socket variable
 		set sock ""
@@ -269,7 +269,7 @@ oo::class create ::rmq::Connection {
 				set sock [socket -async $host $port]
 			} else {
 				set tlsParams [array get tlsOpts]
-                ::rmq::debug "Making TLS connection with options: [array get tlsOpts]"
+				::rmq::debug "Making TLS connection with options: [array get tlsOpts]"
 				set sock [tls::socket {*}[concat [array get tlsOpts] [list -async $host $port]]]
 			}
 
@@ -448,7 +448,7 @@ oo::class create ::rmq::Connection {
 			::rmq::debug "Frame does not end with correct byte value: saving partial frame"
 			::rmq::debug "Frame was [string length $data] bytes with claimed $fsize size on channel $fchannel"
 
-            # partial frames are buffered here
+			# partial frames are buffered here
 			append partialFrame $data
 			return 0
 		}
@@ -674,7 +674,7 @@ oo::class create ::rmq::Connection {
 	# set TLS options for connecting to RabbitMQ
 	# supports all arguments supported by tls::import
 	# as detailed at:
-	#   http://tls.sourceforge.net/tls.htm
+	#	http://tls.sourceforge.net/tls.htm
 	#
 	method tlsOptions {args} {
 		if {[llength $args] & 1} {
@@ -682,7 +682,7 @@ oo::class create ::rmq::Connection {
 		}
 
 		# if we reach here, tls is set for when the socket is created
-        array set tlsOpts $args
+		array set tlsOpts $args
 		return [set tls 1]
 	}
 }
