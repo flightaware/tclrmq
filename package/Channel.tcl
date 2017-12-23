@@ -180,8 +180,12 @@ oo::class create ::rmq::Channel {
 		}
 	}
 
-	method getChannel {} {
+	method getChannelNum {} {
 		return $num
+	}
+
+	method getConnection {} {
+		return $connection
 	}
 
 	method getConsumerCallbackArgs {} {

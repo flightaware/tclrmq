@@ -506,9 +506,13 @@ Takes no arguments, but closes the associated _Connection_ object.
 
 Takes no arguments and returns 1 if the _Channel_ is in the process of closing and 0 otherwise.
 
-### getChannel
+### getChannelNum
 
 Takes no arguments, and returns the channel number.
+
+### getConnection
+
+Takes no arguments, and returns the _Connection_ object passed into the constructor.
 
 ### open?
  
