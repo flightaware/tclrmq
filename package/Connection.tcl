@@ -279,36 +279,36 @@ oo::class create ::rmq::Connection {
 				-buffering none \
 				-encoding binary \
 				-translation binary
+
+			# since we connected using -async, need to wait for a possible timeout
+			# once the socket is connected the writable event will fire and we move on
+			# otherwise we use after to trigger a forceful cancel of the connection
+			fileevent $sock writable [list set ::rmq::connectTimeout 1]
+			set timeoutID [after [expr {$maxTimeout * 1000}] \
+								 [list set ::rmq::connectTimeout 1]]
+			vwait ::rmq::connectTimeout
+
+			# potentially reconnect after a timeout
+			# otherwise, unset the writable handler, cancel the timeout check
+			# fconfigure the socket, and move on with something useful
+			if {[fconfigure $sock -connecting]} {
+				my closeConnection
+				set err [fconfigure $sock -error]
+				::rmq::debug "Connection timed out (-error $err) connecting to $host:$port"
+				if {$autoReconnect && !$reconnecting} {
+					after idle [after 0 [list [self] attemptReconnect]]
+				}
+				return 0
+			} else {
+				# we're connected, no need to detect timeout 
+				fileevent $sock writable ""
+				after cancel $timeoutID
+			}
 		} on error {result options} {
 			# when using -async this is reached when a DNS lookup fails
 			::rmq::debug "Error connecting to $host:$port '$result'"
 			my closeConnection
 			return 0
-		}
-
-		# since we connected using -async, need to wait for a possible timeout
-		# once the socket is connected the writable event will fire and we move on
-		# otherwise we use after to trigger a forceful cancel of the connection
-		fileevent $sock writable [list set ::rmq::connectTimeout 1]
-		set timeoutID [after [expr {$maxTimeout * 1000}] \
-							 [list set ::rmq::connectTimeout 1]]
-		vwait ::rmq::connectTimeout
-
-		# potentially reconnect after a timeout
-		# otherwise, unset the writable handler, cancel the timeout check
-		# fconfigure the socket, and move on with something useful
-		if {[fconfigure $sock -connecting]} {
-			my closeConnection
-			set err [fconfigure $sock -error]
-			::rmq::debug "Connection timed out (-error $err) connecting to $host:$port"
-			if {$autoReconnect && !$reconnecting} {
-				after idle [after 0 [list [self] attemptReconnect]]
-			}
-			return 0
-		} else {
-			# we're connected, no need to detect timeout 
-			fileevent $sock writable ""
-			after cancel $timeoutID
 		}
 
 		# mark the object variables for connection status
