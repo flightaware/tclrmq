@@ -799,9 +799,7 @@ oo::define ::rmq::Channel {
 		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
 
 		# unset any get or deliver callbacks
-		array unset consumerCBs
-		my removeCallback basicReturn
-		my removeCallback basicGet
+		array unset consumerCBs $cTag
 	}
 
 	method basicCancelOk {data} {
@@ -820,9 +818,7 @@ oo::define ::rmq::Channel {
 
 		::rmq::debug "Basic.Cancel received for consumer tag $cTag"
 
-		array unset consumerCBs
-		my removeCallback basicReturn
-		my removeCallback basicGet
+		array unset consumerCBs $cTag
 
 		set bCancelCB [my getCallback basicCancel]
 		if {$bCancelCB ne ""} {

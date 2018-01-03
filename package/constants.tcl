@@ -290,8 +290,8 @@ namespace eval rmq {
 	set AMQP_VMINOR 9
 
 	# client properties
-	set PRODUCT "Tcl RabbitMQ Client Library"
-	set VERSION "1.2.4"
+	set PRODUCT "tclrmq"
+	set VERSION "1.2.5"
 }
 
 # vim: ts=4:sw=4:sts=4:noet
