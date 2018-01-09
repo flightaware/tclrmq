@@ -291,7 +291,7 @@ namespace eval rmq {
 
 	# client properties
 	set PRODUCT "tclrmq"
-	set VERSION "1.2.5"
+	set VERSION "1.3.0"
 }
 
 # vim: ts=4:sw=4:sts=4:noet

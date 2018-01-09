@@ -363,7 +363,7 @@ Takes no arguments.  Using the _-maxBackoff_ and _-maxReconnects_ constructor ar
 
 ### closeConnection
 
-Takes no arguments.  Closes the connection and invokes any callback set with _onClose_.
+Takes an optional boolean argument controlling whether the _onClose_ callback is invoked (defaults to true).  Closes the connection and, if specified, calls any callback set with _onClose_.
 
 ### connect
 
@@ -411,6 +411,10 @@ the _Connection_ object, a frame type and any extra data included in the frame.
 ### onFailedReconnect
 
 Takes the name of a callback proc used when the maximum number of connection attempts have been made without sucess.  The callback proc takes the __Connection__ object.
+
+### removeCallbacks
+
+Takes an optional boolean _channelsToo_, which defaults to 0.  Unsets all callbacks for the _Connection_ object.  If _channelsToo_ is 1, also unsets callbacks on all of its channels. 
 
 ### tlsOptions
 
@@ -500,7 +504,7 @@ a dictionary containing the following keys and values (all keys will be included
 
 ### closeConnection
 
-Takes no arguments, but closes the associated _Connection_ object.  
+Takes an optional boolean argument, _callCloseCB_, which defaults to 1.  Closes the associated _Connection_ object and if _callCloseCB_ is true, any callback set with _onClose_ is invoked, otherwise it is ignored.
 
 ### closing?
 
@@ -520,7 +524,7 @@ Alias for _active?_.
 
 ### on
 
-Takes an AMQP method name in camel case, starting with a lower case letter and the name of a callback proc for the method.
+Takes an AMQP method name in camel case, starting with a lower case letter and the name of a callback proc for the method.  To unset a callback, set its callback proc to the empty string or use _removeCallback_.
 
 ### onClose
 
@@ -545,6 +549,18 @@ The callback takes the _Channel_ object.
 ### onOpened
 
 Alias for _onOpen_.
+
+### removeCallback
+
+Takes the name of an AMQP method as defined on a _Channel_ object.  
+
+### removeCallbacks
+
+Takes no arguments.  Sets all callbacks to the empty string, effectively removing them.
+
+### setCallback
+
+Takes the name of an AMQP method as defined on a _Channel_ object (or for the _on_ Channel method).  The preferred method to use is _on_, but this is alternative method for setting a callback.  To unset a callback, set its callback proc to the empty string or use _removeCallback_.
 
 ## _Channel_ AMQP Methods
 

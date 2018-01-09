@@ -154,7 +154,7 @@ oo::class create ::rmq::Channel {
 			} elseif {$lastBasicMethod eq "return"} {
 				my callback basicReturn {*}$consumerCBArgs
 			} else {
-				::rmq::debug "Received enqueued data ($methodData $frameData $receivedData) but no callback set"
+				::rmq::debug "Received enqueued data ($consumerCBArgs) but no callback set"
 			}
 		} else {
 			::rmq::debug "Received [string length $receivedData] bytes so far"
@@ -245,6 +245,12 @@ oo::class create ::rmq::Channel {
 
 	method removeCallback {amqpMethod} {
 		dict unset callbacksD $amqpMethod
+	}
+
+	method removeCallbacks {} {
+		set callbacksD [dict create]
+		array unset consumerCBs
+		array set consumerCBs {}
 	}
 
 	method setCallback {amqpMethod cb} {

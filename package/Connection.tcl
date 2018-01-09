@@ -83,6 +83,11 @@ oo::class create ::rmq::Connection {
 	variable heartbeatSecs
 	variable heartbeatID
 
+	# If we periodically poll the socket for EOF to
+	# to try and detect inactivity when hearthbeats
+	# are disabled save the after event ID
+	variable sockHealthPollingID
+
 	# Whether to use TLS for the socket connection
 	variable tls
 	variable tlsOpts
@@ -158,6 +163,9 @@ oo::class create ::rmq::Connection {
 
 		# book-keeping for frame processing
 		set partialFrame ""
+
+		# if doing periodic socket polling
+		set sockHealthPollingID ""
 		
 		# whether we are attempting to reconnect
 		set reconnecting 0
@@ -219,7 +227,8 @@ oo::class create ::rmq::Connection {
 	method checkConnection {} {
 		try {
 			eof $sock
-			after $::rmq::CHECK_CONNECTION [list [self] checkConnection]
+			set sockHealthPollingID \
+				[after $::rmq::CHECK_CONNECTION [list [self] checkConnection]]
 		} on error {result options} {
 			::rmq::debug "When testing EOF on socket: '$result'"
 			my closeConnection
@@ -229,7 +238,7 @@ oo::class create ::rmq::Connection {
 	#
 	# perform all necessary book-keeping to close the Connection
 	#
-	method closeConnection {} {
+	method closeConnection {{callCloseCB 1}} {
 		::rmq::debug "Closing connection"
 		try {
 			fileevent $sock readable ""
@@ -244,14 +253,20 @@ oo::class create ::rmq::Connection {
 		set lastSend 0
 		set channelsD [dict create]
 		after cancel $heartbeatID
+		after cancel $sockHealthPollingID
 
 		# if we are reconnecting, do not want to call this
 		# too many times so we check the reconnecting flag
 		# this way, the first disconnection will invoke this
 		# but not every subsequent one
 		# then, if reconnects fail, a separate callback is used
-		if {$closedCB ne "" && !$reconnecting} {
+		if {$closedCB ne "" && $callCloseCB && !$reconnecting} {
 			$closedCB [self] $closeD
+		}
+
+		# time to try an auto reconnect is configured to do so
+		if {$autoReconnect && !$reconnecting} {
+			my attemptReconnect
 		}
 	}
 
@@ -320,7 +335,8 @@ oo::class create ::rmq::Connection {
 		# periodically monitor for connection status if heartbeats
 		# disabled
 		if {$heartbeatSecs == 0} {
-			after $::rmq::CHECK_CONNECTION [list [self] checkConnection]
+			set sockHealthPollingID \
+				[after $::rmq::CHECK_CONNECTION [list [self] checkConnection]]
 		}
 
 		# send the protocol header
@@ -549,23 +565,14 @@ oo::class create ::rmq::Connection {
 	method readFrame {} {
 		if {[eof $sock]} {
 			::rmq::debug "Reached EOF reading from socket"
-			if {$autoReconnect} {
-				my closeConnection 
-				return [my attemptReconnect]
-			} else {
-				return [my closeConnection]
+			return [my closeConnection]
 		}
 
 		try {
 			set data [read $sock $frameMax]
 		} on error {result options} {
 			::rmq::debug "Error reading from socket"
-			if {$autoReconnect} {
-				my closeConnection
-				return [my attemptReconnect]
-			} else {
-				return [my closeConnection]
-			}	
+			return [my closeConnection]
 		}
 
 		if {$data ne ""} {
@@ -576,6 +583,23 @@ oo::class create ::rmq::Connection {
 			foreach frame [my splitFrames $data] {
 				my processFrameSafe $frame
 			}
+		}
+	}
+
+	method removeCallbacks {{channelsToo 0}} {
+		# reset all specific callbacks for Connection
+		set blockedCB ""
+		set connectedCB ""
+		set closedCB ""
+		set errorCB ""
+		set failedReconnectCB ""
+
+		if {!$channelToo} {
+			return
+		}
+	
+		foreach chanObj [dict values $channelsD] {
+			$chanObj removeCallbacks
 		}
 	}
 
@@ -920,9 +944,7 @@ oo::define ::rmq::Connection {
 
 	method connectionCloseOk {data} {
 		::rmq::debug "Connection.CloseOk"
-
-		# time to close the connection
-		my closeConnection
+		my closeConnection 
 	}
 
 	method sendConnectionCloseOk {} {
