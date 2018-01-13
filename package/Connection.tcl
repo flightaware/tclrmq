@@ -283,9 +283,8 @@ oo::class create ::rmq::Connection {
 			if {!$tls} {
 				set sock [socket -async $host $port]
 			} else {
-				set tlsParams [array get tlsOpts]
 				::rmq::debug "Making TLS connection with options: [array get tlsOpts]"
-				set sock [tls::socket {*}[concat [array get tlsOpts] [list -async $host $port]]]
+				set sock [tls::socket {*}[concat [list -async $host $port] [array get tlsOpts]]]
 			}
 
 			# configure the socket
@@ -594,7 +593,7 @@ oo::class create ::rmq::Connection {
 		set errorCB ""
 		set failedReconnectCB ""
 
-		if {!$channelToo} {
+		if {!$channelsToo} {
 			return
 		}
 	
@@ -641,19 +640,19 @@ oo::class create ::rmq::Connection {
 		set sinceLastSend [expr {$now - $lastSend}]
 		::rmq::debug "Heartbeat: $sinceLastRead secs since last read and $sinceLastSend secs since last send"
 
-		# since we check whether to send a heartbeat every heartbeatSecs / 2 secs
-		# need to check if we'd be over the heartbeat interval at the end of the
-		# after wait if we did not send a heartbeat right now
-		if {$sinceLastSend >= $heartbeatSecs >> 1} {
-			::rmq::debug "Sending heartbeat frame: long enough since last send" 
-			my send [::rmq::enc_frame $::rmq::FRAME_HEARTBEAT 0 ""]
-		}
-
 		# despite being able to send data on the socket, if we haven't heard anything
 		# from the server for > 2 heartbeat intervals, we need to disconnect
 		if {$sinceLastRead > 2 * $heartbeatSecs} {
 			::rmq::debug "Been more than 2 heartbeat intervals without socket read activity, shutting down connection"
 			return [my closeConnection]
+		}
+
+		# since we check whether to send a heartbeat every heartbeatSecs / 2 secs
+		# need to check if we'd be over the heartbeat interval at the end of the
+		# after wait if we did not send a heartbeat right now
+		if {max($sinceLastRead, $sinceLastSend) >= $heartbeatSecs >> 1} {
+			::rmq::debug "Sending heartbeat frame: long enough since last send or last read" 
+			return [my send [::rmq::enc_frame $::rmq::FRAME_HEARTBEAT 0 ""]]
 		}
 
 		# set another timer for this method
