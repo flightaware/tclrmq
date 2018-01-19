@@ -8,7 +8,7 @@
 ##	will pass through a proc contained in this file
 ##
 ##
-package provide rmq 1.0
+package provide rmq 1.3.1
 
 namespace eval rmq {
 

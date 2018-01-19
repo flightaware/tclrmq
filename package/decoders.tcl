@@ -1,4 +1,4 @@
-package provide rmq 1.0
+package provide rmq 1.3.1
 
 namespace eval rmq {
 
