@@ -148,11 +148,11 @@ oo::class create ::rmq::Channel {
 			# invoke the callback
 			if {$lastBasicMethod eq "deliver"} {
 				set cTag [dict get [lindex $consumerCBArgs 0] consumerTag]
-				$consumerCBs($cTag) [self] {*}$consumerCBArgs
+				after idle [list after 0 [list $consumerCBs($cTag) [self] {*}$consumerCBArgs]]
 			} elseif {$lastBasicMethod eq "get"} {
-				my callback basicDeliver {*}$consumerCBArgs
+				after idle [list after 0 [list my callback basicDeliver {*}$consumerCBArgs]]
 			} elseif {$lastBasicMethod eq "return"} {
-				my callback basicReturn {*}$consumerCBArgs
+				after idle [list after 0 [list my callback basicReturn {*}$consumerCBArgs]]
 			} else {
 				::rmq::debug "Received enqueued data ($consumerCBArgs) but no callback set"
 			}
@@ -803,9 +803,6 @@ oo::define ::rmq::Channel {
 			$::rmq::BASIC_CANCEL \
 			${cTag}${noWait}]
 		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-
-		# unset any get or deliver callbacks
-		array unset consumerCBs $cTag
 	}
 
 	method basicCancelOk {data} {
