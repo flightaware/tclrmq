@@ -550,6 +550,10 @@ The callback takes the _Channel_ object.
 
 Alias for _onOpen_.
 
+### reconnecting?
+
+Takes no arguments.  Returns 1 if _Connection_ is in the process of attempting a reconnect and 0 otherwise.
+
 ### removeCallback
 
 Takes the name of an AMQP method as defined on a _Channel_ object.  

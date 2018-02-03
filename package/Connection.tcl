@@ -585,6 +585,10 @@ oo::class create ::rmq::Connection {
 		}
 	}
 
+	method reconnecting? {} {
+		return $reconnecting
+	}
+
 	method removeCallbacks {{channelsToo 0}} {
 		# reset all specific callbacks for Connection
 		set blockedCB ""
