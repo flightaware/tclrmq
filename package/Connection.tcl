@@ -39,7 +39,7 @@ oo::class create ::rmq::Connection {
 	# this is set to true after performing the handshake
 	variable connected
 
-	#maximum connect timeout.
+	# max timeout in secs for obtaining socket connection
 	variable maxTimeout
 	
 	# whether the connection is blocked
