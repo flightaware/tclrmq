@@ -15,7 +15,7 @@ namespace eval rmq {
 
 	# return random integer in [start, end]	
 	proc rand_int {start end} {
-		set range [expr {$start - $end + 1}]
+		set range [expr {$end - $start + 1}]
 		return [expr {$start + int(rand() * $range)}]
 	}
 }
