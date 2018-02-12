@@ -1,4 +1,4 @@
-package provide rmq 1.3.1
+package provide rmq 1.3.2
 
 package require TclOO
 package require tls
@@ -39,6 +39,9 @@ oo::class create ::rmq::Connection {
 	# this is set to true after performing the handshake
 	variable connected
 
+	#maximum connect timeout.
+	variable maxTimeout
+	
 	# whether the connection is blocked
 	variable blocked
 
