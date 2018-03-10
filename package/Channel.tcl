@@ -781,10 +781,10 @@ oo::define ::rmq::Channel {
 		::rmq::debug "Basic.ConsumeOk (consumer tag: $cTag)"
 
 		# if just learned the consumer tag, update callbacks array
-		if {[info exists consumerCBs("")]} {
-			::rmq::debug "With server generated consumer tag, unsetting empty callback key"	
-			set consumerCBs($cTag) $consumerCBs("")
-			unset consumerCBs("")
+		if {[info exists consumerCBs()]} {
+			::rmq::debug "Have server generated consumer tag, unsetting empty callback key"	
+			set consumerCBs($cTag) $consumerCBs()
+			unset consumerCBs()
 		}
 
 		set bConsumeCB [my getCallback basicConsumeOk]
