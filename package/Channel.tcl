@@ -148,7 +148,11 @@ oo::class create ::rmq::Channel {
 			# invoke the callback
 			if {$lastBasicMethod eq "deliver"} {
 				set cTag [dict get [lindex $consumerCBArgs 0] consumerTag]
-				after idle [list after 0 [list $consumerCBs($cTag) [self] {*}$consumerCBArgs]]
+				if {[info exists consumerCBs($cTag)]} {
+					after idle [list after 0 [list $consumerCBs($cTag) [self] {*}$consumerCBArgs]]
+				} else {
+					::rmq::debug "Delivered message for consumer tag $cTag, but no callback set"
+				}
 			} elseif {$lastBasicMethod eq "get"} {
 				after idle [list after 0 [list my callback basicDeliver {*}$consumerCBArgs]]
 			} elseif {$lastBasicMethod eq "return"} {
