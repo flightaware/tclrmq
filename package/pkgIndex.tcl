@@ -8,4 +8,4 @@
 # script is sourced, the variable $dir must contain the
 # full path name of this file's directory.
 
-package ifneeded rmq 1.3.2 [list source [file join $dir Channel.tcl]]\n[list source [file join $dir Connection.tcl]]\n[list source [file join $dir Login.tcl]]\n[list source [file join $dir constants.tcl]]\n[list source [file join $dir decoders.tcl]]\n[list source [file join $dir encoders.tcl]]
+package ifneeded rmq 1.3.3 [list source [file join $dir Channel.tcl]]\n[list source [file join $dir Connection.tcl]]\n[list source [file join $dir Login.tcl]]\n[list source [file join $dir constants.tcl]]\n[list source [file join $dir decoders.tcl]]\n[list source [file join $dir encoders.tcl]]
