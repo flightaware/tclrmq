@@ -1,5 +1,18 @@
 #!/usr/bin/env tclsh
 
+##
+##
+## Used to bump the version of tclrmq
+##
+## Usage: ./bumpVersion.tcl <new version>
+##
+## Goes line by line through all files with a .tcl
+## extension and copies each line into a temporary file
+## with any lines containing the old version bumped to
+## the new one. Once all lines in a file have been procesed, 
+## the temporary one replaces the original
+##
+
 proc bump_line {line newv} {
     if {![regexp {(package provide rmq|package ifneeded rmq) ([0-9]+\.[0-9]+\.[0-9]+)(.*$)} \
           $line -> pReq pVer pRest]} {
@@ -23,7 +36,7 @@ if {!$tcl_interactive} {
         set ofd [open $fname]
         set tfd [file tempfile tfname]
         while {[gets $ofd line] >= 0} {
-            puts stderr $tfd [bump_line $line $newVer]
+            puts $tfd [bump_line $line $newVer]
         } 
 
         close $tfd
