@@ -13,7 +13,7 @@ namespace eval rmq {
 		}
 	}
 
-	# return random integer in [start, end]	
+	# return random integer in [start, end]
 	proc rand_int {start end} {
 		set range [expr {$end - $start + 1}]
 		return [expr {$start + int(rand() * $range)}]
@@ -41,7 +41,7 @@ oo::class create ::rmq::Connection {
 
 	# max timeout in secs for obtaining socket connection
 	variable maxTimeout
-	
+
 	# whether the connection is blocked
 	variable blocked
 
@@ -94,7 +94,7 @@ oo::class create ::rmq::Connection {
 	# Whether to use TLS for the socket connection
 	variable tls
 	variable tlsOpts
-	
+
 	# Whether to try and auto-reconnect when connection forcibly
 	# closed by the remote side or the network
 	# Maximum number of exponential backoff attempts to try
@@ -169,7 +169,7 @@ oo::class create ::rmq::Connection {
 
 		# if doing periodic socket polling
 		set sockHealthPollingID ""
-		
+
 		# whether we are attempting to reconnect
 		set reconnecting 0
 
@@ -218,6 +218,7 @@ oo::class create ::rmq::Connection {
 		}
 
 		::rmq::debug "Unable to successfully reconnect, not attempting any more..."
+        set reconnecting 0
 		if {$failedReconnectCB ne ""} {
 			{*}$failedReconnectCB [self]
 		}
@@ -301,15 +302,19 @@ oo::class create ::rmq::Connection {
 			# since we connected using -async, need to wait for a possible timeout
 			# once the socket is connected the writable event will fire and we move on
 			# otherwise we use after to trigger a forceful cancel of the connection
-			chan event $sock writable [list set ::rmq::connectTimeout 1]
+			chan event $sock writable [list set ::rmq::connectTimeout 0]
 			set timeoutID [after [expr {$maxTimeout * 1000}] \
 								 [list set ::rmq::connectTimeout 1]]
 			vwait ::rmq::connectTimeout
 
+            # get rid of connection timeout state
+            chan event $sock writable ""
+            after cancel $timeoutID
+
 			# potentially reconnect after a timeout
 			# otherwise, unset the writable handler, cancel the timeout check
 			# and move on with something useful
-			if {[chan configure $sock -connecting]} {
+			if {$::rmq::connectTimeout && [chan configure $sock -connecting]} {
 				::rmq::debug "Connection timed out connecting to $host:$port"
 
 				my closeConnection
@@ -317,12 +322,15 @@ oo::class create ::rmq::Connection {
 					after idle [after 0 [list [self] attemptReconnect]]
 				}
 				return 0
-			} else {
-				# we're connected, no need to detect timeout 
-				chan event $sock writable ""
-				after cancel $timeoutID
+			} elseif {[set sockErr [chan configure $sock -error]] ne ""} {
+                ::rmq::debug "Connection socket error: $sockErr"
+                my closeConnection
+				if {$autoReconnect && !$reconnecting} {
+					after idle [after 0 [list [self] attemptReconnect]]
+				}
+				return 0
 			}
-			
+
 			# setup a readable callback for parsing rmq data
 			chan event $sock readable [list [self] readFrame]
 
@@ -491,8 +499,10 @@ oo::class create ::rmq::Connection {
 	method processFrameSafe {data} {
 		try {
 			my processFrame $data
+            return 1
 		} on error {result options} {
 			::rmq::debug "processFrame error: $result $options"
+            return 0
 		}
 	}
 
@@ -565,28 +575,29 @@ oo::class create ::rmq::Connection {
 	# RabbitMQ server
 	#
 	method readFrame {} {
-		if {[eof $sock]} {
-			::rmq::debug "Reached EOF reading from socket"
-			return [my closeConnection]
-		}
-
 		try {
-			set data [read $sock $frameMax]
-		} on error {result options} {
-			::rmq::debug "Error reading from socket"
+			set data [chan read $sock $frameMax]
+            if {$data eq "" && [chan eof $sock]} {
+                ::rmq::debug "Reached EOF reading from socket"
+                return [my closeConnection]
+            }
+        } on error {result options} {
+			::rmq::debug "Error reading from socket '$result'"
 			return [my closeConnection]
 		}
 
-		if {$data ne ""} {
-			# mark time for socket read activity
-			set lastRead [clock seconds]
+        if {$data ne ""} {
+            # mark time for socket read activity
+            set lastRead [clock seconds]
 
-			# process frames
-			foreach frame [my splitFrames $data] {
-				my processFrameSafe $frame
-			}
-		}
-	}
+            # process frames
+            foreach frame [my splitFrames $data] {
+                if {![my processFrameSafe $frame]} {
+                    break
+                }
+            }
+        }
+    }
 
 	method reconnecting? {} {
 		return $reconnecting
@@ -603,7 +614,7 @@ oo::class create ::rmq::Connection {
 		if {!$channelsToo} {
 			return
 		}
-	
+
 		foreach chanObj [dict values $channelsD] {
 			$chanObj removeCallbacks
 		}
@@ -658,7 +669,7 @@ oo::class create ::rmq::Connection {
 		# need to check if we'd be over the heartbeat interval at the end of the
 		# after wait if we did not send a heartbeat right now
 		if {max($sinceLastRead, $sinceLastSend) >= $heartbeatSecs >> 1} {
-			::rmq::debug "Sending heartbeat frame: long enough since last send or last read" 
+			::rmq::debug "Sending heartbeat frame: long enough since last send or last read"
 			return [my send [::rmq::enc_frame $::rmq::FRAME_HEARTBEAT 0 ""]]
 		}
 
@@ -792,7 +803,7 @@ oo::define ::rmq::Connection {
 
 		set valueType [::rmq::enc_field_value boolean]
 		set value [::rmq::enc_byte 1]
-	
+
 		# connection.blocked (indicates we support connection.blocked methods)
 		if {$blockedConnections} {
 			dict set capabilities connection.blocked "${valueType}${value}"
@@ -950,7 +961,7 @@ oo::define ::rmq::Connection {
 
 	method connectionCloseOk {data} {
 		::rmq::debug "Connection.CloseOk"
-		my closeConnection 
+		my closeConnection
 	}
 
 	method sendConnectionCloseOk {} {
