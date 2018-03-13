@@ -301,30 +301,30 @@ oo::class create ::rmq::Connection {
 			# since we connected using -async, need to wait for a possible timeout
 			# once the socket is connected the writable event will fire and we move on
 			# otherwise we use after to trigger a forceful cancel of the connection
-			fileevent $sock writable [list set ::rmq::connectTimeout 1]
+			chan event $sock writable [list set ::rmq::connectTimeout 1]
 			set timeoutID [after [expr {$maxTimeout * 1000}] \
 								 [list set ::rmq::connectTimeout 1]]
 			vwait ::rmq::connectTimeout
 
 			# potentially reconnect after a timeout
 			# otherwise, unset the writable handler, cancel the timeout check
-			# fconfigure the socket, and move on with something useful
+			# and move on with something useful
 			if {[chan configure $sock -connecting]} {
+				::rmq::debug "Connection timed out connecting to $host:$port"
+
 				my closeConnection
-				set err [chan configure $sock -error]
-				::rmq::debug "Connection timed out (-error $err) connecting to $host:$port"
 				if {$autoReconnect && !$reconnecting} {
 					after idle [after 0 [list [self] attemptReconnect]]
 				}
 				return 0
 			} else {
 				# we're connected, no need to detect timeout 
-				fileevent $sock writable ""
+				chan event $sock writable ""
 				after cancel $timeoutID
 			}
 			
 			# setup a readable callback for parsing rmq data
-			chan even $sock readable [list [self] readFrame]
+			chan event $sock readable [list [self] readFrame]
 
 			# periodically monitor for connection status if heartbeats
 			# disabled
