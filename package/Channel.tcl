@@ -28,7 +28,6 @@ oo::class create ::rmq::Channel {
 	# whether the channel is in confirm mode
 	# and, if so, the publish number of the next message
 	variable confirmMode
-	variable publishNumber
 
 	# can set a callback for when the channel is open or closed
 	# or when the channel receives an error code
@@ -717,16 +716,8 @@ oo::define ::rmq::Channel {
 	method basicAckReceived {data} {
 		set deliveryTag [::rmq::dec_ulong_long $data bytes]
 		set multiple [::rmq::dec_byte [string range $data $bytes end] _]
+
 		::rmq::debug "Basic.Ack received for $deliveryTag with multiple ($multiple)"
-
-		if {$multiple} {
-			set publishNumber [expr {$deliveryTag + 1}]
-		} elseif {$publishNumber == $deliveryTag} {
-			incr publishNumber
-		} else {
-			::rmq::debug "Basic.Ack received for $deliveryTag but expecting $publishNumber"
-		}
-
 		my callback basicAck $deliveryTag $multiple
 	}
 
@@ -1048,7 +1039,6 @@ oo::define ::rmq::Channel {
 	method confirmSelectOk {data} {
 		::rmq::debug "Confirm.SelectOk (now in confirm mode)"
 		set confirmMode 1
-		set publishNumber 1
 
 		my callback confirmSelectOk
 	}
