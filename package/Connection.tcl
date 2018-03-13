@@ -219,7 +219,7 @@ oo::class create ::rmq::Connection {
 
 		::rmq::debug "Unable to successfully reconnect, not attempting any more..."
 		if {$failedReconnectCB ne ""} {
-			$failedReconnectCB [self]
+			{*}$failedReconnectCB [self]
 		}
 	}
 
@@ -264,7 +264,7 @@ oo::class create ::rmq::Connection {
 		# but not every subsequent one
 		# then, if reconnects fail, a separate callback is used
 		if {$closedCB ne "" && $callCloseCB && !$reconnecting} {
-			$closedCB [self] $closeD
+			{*}$closedCB [self] $closeD
 		}
 
 		# time to try an auto reconnect is configured to do so
@@ -283,6 +283,7 @@ oo::class create ::rmq::Connection {
 	method connect {} {
 		# create the socket and configure accordingly
 		try {
+			set connected 0
 			if {!$tls} {
 				set sock [socket -async $host $port]
 			} else {
@@ -291,7 +292,7 @@ oo::class create ::rmq::Connection {
 			}
 
 			# configure the socket
-			fconfigure $sock \
+			chan configure $sock \
 				-blocking 0 \
 				-buffering none \
 				-encoding binary \
@@ -308,9 +309,9 @@ oo::class create ::rmq::Connection {
 			# potentially reconnect after a timeout
 			# otherwise, unset the writable handler, cancel the timeout check
 			# fconfigure the socket, and move on with something useful
-			if {[fconfigure $sock -connecting]} {
+			if {[chan configure $sock -connecting]} {
 				my closeConnection
-				set err [fconfigure $sock -error]
+				set err [chan configure $sock -error]
 				::rmq::debug "Connection timed out (-error $err) connecting to $host:$port"
 				if {$autoReconnect && !$reconnecting} {
 					after idle [after 0 [list [self] attemptReconnect]]
@@ -321,31 +322,30 @@ oo::class create ::rmq::Connection {
 				fileevent $sock writable ""
 				after cancel $timeoutID
 			}
+			
+			# setup a readable callback for parsing rmq data
+			chan even $sock readable [list [self] readFrame]
+
+			# periodically monitor for connection status if heartbeats
+			# disabled
+			if {$heartbeatSecs == 0} {
+				set sockHealthPollingID \
+					[after $::rmq::CHECK_CONNECTION [list [self] checkConnection]]
+			}
+
+			# send the protocol header
+			my send [::rmq::enc_protocol_header]
+			::rmq::debug "Sent protocol header"
+
+			# return success (although connection not ready for use
+			# until receive connection.open-ok AMQP method)
+			return 1
 		} on error {result options} {
 			# when using -async this is reached when a DNS lookup fails
 			::rmq::debug "Error connecting to $host:$port '$result'"
 			my closeConnection
 			return 0
 		}
-
-		# mark the object variables for connection status
-		set connected 1
-
-		# setup a readable callback for parsing rmq data
-		fileevent $sock readable [list [self] readFrame]
-
-		# periodically monitor for connection status if heartbeats
-		# disabled
-		if {$heartbeatSecs == 0} {
-			set sockHealthPollingID \
-				[after $::rmq::CHECK_CONNECTION [list [self] checkConnection]]
-		}
-
-		# send the protocol header
-		my send [::rmq::enc_protocol_header]
-		::rmq::debug "Sent protocol header"
-
-		return 1
 	}
 
 	method connected? {} {
@@ -547,7 +547,7 @@ oo::class create ::rmq::Connection {
 			# decide whether the channel needs to be closed or not
 			if {$channelObj eq ""} {
 				if {$errorCB ne ""} {
-					$errorCB [self] $ftype $data
+					{*}$errorCB [self] $ftype $data
 				}
 			} else {
 				$channelObj errorHandler $ftype $data
@@ -911,9 +911,9 @@ oo::define ::rmq::Connection {
 
 		::rmq::debug "Connection.OpenOk: connection now established"
 
-		# call user supplied callback for when a connection is established
+		# call user supplied callback for when Connection is ready for use
 		if {$connectedCB ne ""} {
-			$connectedCB [self]
+			{*}$connectedCB [self]
 		}
 	}
 
@@ -967,7 +967,7 @@ oo::define ::rmq::Connection {
 		set blocked 1
 		set reason [::rmq::dec_short_string $data _]
 		if {$BlockedCB ne ""} {
-			$blockedCB [self] $blocked $reason
+			{*}$blockedCB [self] $blocked $reason
 		}
 	}
 
@@ -976,7 +976,7 @@ oo::define ::rmq::Connection {
 
 		set blocked 0
 		if {$blockedCB ne ""} {
-			$blockedCB [self] $blocked ""
+			{*}$blockedCB [self] $blocked ""
 		}
 	}
 }
