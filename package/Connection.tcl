@@ -1,4 +1,4 @@
-package provide rmq 1.3.4
+package provide rmq 1.3.5
 
 package require TclOO
 package require tls
@@ -218,7 +218,7 @@ oo::class create ::rmq::Connection {
 		}
 
 		::rmq::debug "Unable to successfully reconnect, not attempting any more..."
-        set reconnecting 0
+		set reconnecting 0
 		if {$failedReconnectCB ne ""} {
 			{*}$failedReconnectCB [self]
 		}
@@ -308,8 +308,8 @@ oo::class create ::rmq::Connection {
 			vwait ::rmq::connectTimeout
 
             # get rid of connection timeout state
-            chan event $sock writable ""
-            after cancel $timeoutID
+			chan event $sock writable ""
+			after cancel $timeoutID
 
 			# potentially reconnect after a timeout
 			# otherwise, unset the writable handler, cancel the timeout check
@@ -323,8 +323,8 @@ oo::class create ::rmq::Connection {
 				}
 				return 0
 			} elseif {[set sockErr [chan configure $sock -error]] ne ""} {
-                ::rmq::debug "Connection socket error: $sockErr"
-                my closeConnection
+				::rmq::debug "Connection socket error: $sockErr"
+				my closeConnection
 				if {$autoReconnect && !$reconnecting} {
 					after idle [after 0 [list [self] attemptReconnect]]
 				}

@@ -1,4 +1,4 @@
-package provide rmq 1.3.4
+package provide rmq 1.3.5
 
 namespace eval rmq {
 	# Frame types
