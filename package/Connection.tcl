@@ -307,7 +307,7 @@ oo::class create ::rmq::Connection {
 								 [list set ::rmq::connectTimeout 1]]
 			vwait ::rmq::connectTimeout
 
-            # get rid of connection timeout state
+			# get rid of connection timeout state
 			chan event $sock writable ""
 			after cancel $timeoutID
 
@@ -580,7 +580,7 @@ oo::class create ::rmq::Connection {
 			if {$data eq "" && [chan eof $sock]} {
 				::rmq::debug "Reached EOF reading from socket"	
 				return [my closeConnection]
-            }
+			}
 		} on error {result options} {
 			::rmq::debug "Error reading from socket '$result'"
 			return [my closeConnection]
