@@ -230,7 +230,7 @@ oo::class create ::rmq::Connection {
 	#
 	method checkConnection {} {
 		try {
-			eof $sock
+			chan eof $sock
 			set sockHealthPollingID \
 				[after $::rmq::CHECK_CONNECTION [list [self] checkConnection]]
 		} on error {result options} {
@@ -245,7 +245,7 @@ oo::class create ::rmq::Connection {
 	method closeConnection {{callCloseCB 1}} {
 		::rmq::debug "Closing connection"
 		try {
-			fileevent $sock readable ""
+			chan event $sock readable ""
 			close $sock
 		} on error {result options} {
 			::rmq::debug "Close connection error: '$result'"
@@ -571,14 +571,14 @@ oo::class create ::rmq::Connection {
 	}
 
 	#
-	# fileevent readable handler for the socket connection to the
+	# readable handler for the socket connection to the
 	# RabbitMQ server
 	#
 	method readFrame {} {
 		try {
 			set data [chan read $sock $frameMax]
 			if {$data eq "" && [chan eof $sock]} {
-				::rmq::debug "Reached EOF reading from socket"	
+				::rmq::debug "Reached EOF reading from socket"
 				return [my closeConnection]
 			}
 		} on error {result options} {

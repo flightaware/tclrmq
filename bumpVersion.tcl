@@ -9,13 +9,15 @@
 ## Goes line by line through all files with a .tcl
 ## extension and copies each line into a temporary file
 ## with any lines containing the old version bumped to
-## the new one. Once all lines in a file have been procesed, 
+## the new one. Once all lines in a file have been procesed,
 ## the temporary one replaces the original
 ##
 
 proc bump_line {line newv} {
-    if {![regexp {(package provide rmq|package ifneeded rmq) ([0-9]+\.[0-9]+\.[0-9]+)(.*$)} \
-          $line -> pReq pVer pRest]} {
+    set prefix "(package provide rmq|package ifneeded rmq|set VERSION) "
+    set version {([0-9]+\.[0-9]+\.[0-9]+)}
+    set rest {(.*$)}
+    if {![regexp "$prefix$version$rest" $line -> pReq pVer pRest]} {
         return $line
     }
     return "$pReq $newv$pRest"
@@ -37,10 +39,10 @@ if {!$tcl_interactive} {
         set tfd [file tempfile tfname]
         while {[gets $ofd line] >= 0} {
             puts $tfd [bump_line $line $newVer]
-        } 
+        }
 
         close $tfd
-        close $ofd 
+        close $ofd
 
         file rename -force $tfname $fname
         puts stderr "Bumped $fname"
