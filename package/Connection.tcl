@@ -499,10 +499,10 @@ oo::class create ::rmq::Connection {
 	method processFrameSafe {data} {
 		try {
 			my processFrame $data
-            return 1
+			return 1
 		} on error {result options} {
 			::rmq::debug "processFrame error: $result $options"
-            return 0
+			return 0
 		}
 	}
 
@@ -577,27 +577,27 @@ oo::class create ::rmq::Connection {
 	method readFrame {} {
 		try {
 			set data [chan read $sock $frameMax]
-            if {$data eq "" && [chan eof $sock]} {
-                ::rmq::debug "Reached EOF reading from socket"
-                return [my closeConnection]
+			if {$data eq "" && [chan eof $sock]} {
+				::rmq::debug "Reached EOF reading from socket"	
+				return [my closeConnection]
             }
-        } on error {result options} {
+		} on error {result options} {
 			::rmq::debug "Error reading from socket '$result'"
 			return [my closeConnection]
 		}
 
-        if {$data ne ""} {
-            # mark time for socket read activity
-            set lastRead [clock seconds]
+		if {$data ne ""} {
+			# mark time for socket read activity
+			set lastRead [clock seconds]
 
-            # process frames
-            foreach frame [my splitFrames $data] {
-                if {![my processFrameSafe $frame]} {
-                    break
-                }
-            }
-        }
-    }
+			# process frames
+			foreach frame [my splitFrames $data] {
+				if {![my processFrameSafe $frame]} {
+					break
+				}
+			}
+		}
+	}
 
 	method reconnecting? {} {
 		return $reconnecting
