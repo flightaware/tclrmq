@@ -14,7 +14,7 @@
 ##
 
 proc bump_line {line newv} {
-    set start {(^\s+)}
+    set start {(^\s*)}
     set prefix "(package provide rmq|package ifneeded rmq|set VERSION) "
     set version {([0-9]+\.[0-9]+\.[0-9]+)}
     set rest {(.*$)}
