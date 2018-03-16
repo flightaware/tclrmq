@@ -14,13 +14,14 @@
 ##
 
 proc bump_line {line newv} {
+    set start {(^\s+)}
     set prefix "(package provide rmq|package ifneeded rmq|set VERSION) "
     set version {([0-9]+\.[0-9]+\.[0-9]+)}
     set rest {(.*$)}
-    if {![regexp "$prefix$version$rest" $line -> pReq pVer pRest]} {
+    if {![regexp "$start$prefix$version$rest" $line -> pSpace pReq pVer pRest]} {
         return $line
     }
-    return "$pReq $newv$pRest"
+    return "$pSpace$pReq $newv$pRest"
 }
 
 if {!$tcl_interactive} {
@@ -29,7 +30,12 @@ if {!$tcl_interactive} {
         exit 1
     }
 
-    set curVer [exec git tag | tail -1 | cut --complement -c 1]
+    if {[catch {exec which gcut} result options] == 1} {
+        set cutCmd cut
+    } else {
+        set cutCmd gcut
+    }
+    set curVer [exec git tag | tail -1 | $cutCmd --complement -c 1]
     set newVer [lindex $argv 0]
     puts stderr "Bumping rmq package from $curVer to $newVer"
 
