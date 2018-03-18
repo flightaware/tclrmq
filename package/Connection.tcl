@@ -1,4 +1,4 @@
-package provide rmq 1.3.5
+package provide rmq 1.3.6
 
 package require TclOO
 package require tls
@@ -100,10 +100,12 @@ oo::class create ::rmq::Connection {
 	# Maximum number of exponential backoff attempts to try
 	# Maximum retry attempts
 	# Are we trying to actively reconnect
+	# How many retries have we attempted
 	variable autoReconnect
 	variable maxBackoff
 	variable maxReconnects
 	variable reconnecting
+	variable retries
 
 	##
 	##
@@ -173,6 +175,9 @@ oo::class create ::rmq::Connection {
 		# whether we are attempting to reconnect
 		set reconnecting 0
 
+		# how many retries we have attempted
+		set retries 0
+
 		# heartbeat setup
 		set lastRead 0
 		set lastSend 0
@@ -201,8 +206,7 @@ oo::class create ::rmq::Connection {
 	method attemptReconnect {} {
 		::rmq::debug "Attempting auto-reconnect with exponential backoff"
 		set reconnecting 1
-		set retries 0
-		while {$maxReconnects == 0 || $retries < $maxReconnects} {
+		if {$maxReconnects == 0 || $retries < $maxReconnects} {
 			if {[my connect]} {
 				set reconnecting 0
 				return
@@ -214,13 +218,13 @@ oo::class create ::rmq::Connection {
 			incr retries
 			::rmq::debug "After $waitTime msecs, attempting reconnect ($retries time(s))..."
 
-			after $waitTime
-		}
-
-		::rmq::debug "Unable to successfully reconnect, not attempting any more..."
-		set reconnecting 0
-		if {$failedReconnectCB ne ""} {
-			{*}$failedReconnectCB [self]
+			after $waitTime [list [self] attemptReconnect]
+		} else {
+			::rmq::debug "Unable to successfully reconnect, not attempting any more..."
+			set reconnecting 0
+			if {$failedReconnectCB ne ""} {
+				{*}$failedReconnectCB [self]
+			}
 		}
 	}
 
@@ -241,6 +245,7 @@ oo::class create ::rmq::Connection {
 
 	#
 	# perform all necessary book-keeping to close the Connection
+	# does not send any AMQP method: cleans up object state
 	#
 	method closeConnection {{callCloseCB 1}} {
 		::rmq::debug "Closing connection"
@@ -267,6 +272,7 @@ oo::class create ::rmq::Connection {
 		if {$closedCB ne "" && $callCloseCB && !$reconnecting} {
 			{*}$closedCB [self] $closeD
 		}
+		set closeD [dict create]
 
 		# time to try an auto reconnect is configured to do so
 		if {$autoReconnect && !$reconnecting} {
@@ -315,7 +321,7 @@ oo::class create ::rmq::Connection {
 			# otherwise, unset the writable handler, cancel the timeout check
 			# and move on with something useful
 			if {$::rmq::connectTimeout && [chan configure $sock -connecting]} {
-				::rmq::debug "Connection timed out connecting to $host:$port"
+				::rmq::debug "Connection attempt timed out to $host:$port"
 
 				my closeConnection
 				if {$autoReconnect && !$reconnecting} {
@@ -323,7 +329,7 @@ oo::class create ::rmq::Connection {
 				}
 				return 0
 			} elseif {[set sockErr [chan configure $sock -error]] ne ""} {
-				::rmq::debug "Connection socket error: $sockErr"
+				::rmq::debug "Socket error during connection attempt: $sockErr"
 				my closeConnection
 				if {$autoReconnect && !$reconnecting} {
 					after idle [after 0 [list [self] attemptReconnect]]
@@ -345,9 +351,12 @@ oo::class create ::rmq::Connection {
 			my send [::rmq::enc_protocol_header]
 			::rmq::debug "Sent protocol header"
 
-			# return success (although connection not ready for use
-			# until receive connection.open-ok AMQP method)
-			return 1
+			# return success once we receive connection.open-ok AMQP method
+			set timeoutID [after [expr {$maxTimeout * 1000}] \
+								 [list set [namespace current]::connected 0]]
+			vwait [namespace current]::connected
+			after cancel $timeoutID
+			return $connected
 		} on error {result options} {
 			# when using -async this is reached when a DNS lookup fails
 			::rmq::debug "Error connecting to $host:$port '$result'"
@@ -625,6 +634,14 @@ oo::class create ::rmq::Connection {
 	#
 	method removeChannel {num} {
 		dict unset channelsD $num
+	}
+
+	#
+	# manually reset the number of retries counted
+	# for connection attempts
+	#
+	method resetRetries {} {
+		set retries 0
 	}
 
 	#
@@ -918,6 +935,8 @@ oo::define ::rmq::Connection {
 
 	method connectionOpenOk {data} {
 		# this method signals the connection is ready
+		# and that we are no longer in a retry loop
+		set retries 0
 		set connected 1
 
 		::rmq::debug "Connection.OpenOk: connection now established"
