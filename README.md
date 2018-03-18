@@ -368,7 +368,7 @@ Takes an optional boolean argument controlling whether the _onClose_ callback is
 ### connect
 
 Takes no arguments.  Actually initiates a socket connection with the RabbitMQ server.  If the connection fails the _onClose_ callback is invoked.
-In the future, this will be amended to support auto-reconnect and the invocation of the _onError_ callback instead.
+Two timeouts can potentially occur in this method: one during the TCP handshake and one during the AMQP handshake.  In both cases, the _-maxTimeout_ variable is used.
 
 ### connected?
 
