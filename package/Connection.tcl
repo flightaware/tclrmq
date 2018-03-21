@@ -188,6 +188,8 @@ oo::class create ::rmq::Connection {
 
 	destructor {
 		catch {close $sock}
+        after cancel $heartbeatID
+        after cancel $sockHealthPollingID
 	}
 
 	# attempt to reconnect to the server using
