@@ -368,13 +368,11 @@ Takes an optional boolean argument controlling whether the _onClose_ callback is
 ### connect
 
 Takes no arguments.  Actually initiates a socket connection with the RabbitMQ server.  If the connection fails the _onClose_ callback is invoked.
-In the future, this will be amended to support auto-reconnect and the invocation of the _onError_ callback instead.
+Two timeouts can potentially occur in this method: one during the TCP handshake and one during the AMQP handshake.  In both cases, the _-maxTimeout_ variable is used.  Returns 1 if a connection is fully established, or 0 otherwise.
 
 ### connected?
 
-Takes no arguments.  Returns 0 or 1 depending on whether the socket connection to the server has been established.  This does not indicate
-whether or not the AMQP connection handshake has been completed (that is indicated by the invocation of the _onConnected_ callback).  This method
-is available for detecting an inability to establish a network connection.
+Takes no arguments.  Returns 0 or 1 depending on whether the socket connection to the server has been established and an AMQP handshake completed.  It is only true once both those conditions have been satisfied.  In the event that a connection fails, the `getSocket` method can be used to obtain and query the socket channel and determine whether the problem is network or protocol based.
 
 ### getSocket
 
@@ -416,11 +414,19 @@ Takes the name of a callback proc used when the maximum number of connection att
 
 Takes an optional boolean _channelsToo_, which defaults to 0.  Unsets all callbacks for the _Connection_ object.  If _channelsToo_ is 1, also unsets callbacks on all of its channels. 
 
+### reconnecting?
+
+Takes no argument.  Returns 0 or 1 depending on whether the _Connection_ is in the process of attempting a reconnect.
+
+### resetRetries
+
+Takes no arguments.  Sets the count of connection retries back to 0.  Useful in cases where _-autoReconnect_ is true and more fine-grained control of the retry loop is desired.  Internally the retry count is reset to 0 when the AMQP handshake completes.
+
 ### tlsOptions
 
 Used to setup the parameters for an SSL / TLS connection to the RabbitMQ server.  
 Supports all arguments supported by the Tcl tls package's `::tls::import::` command
-as specified in the [Tcl TLS documentation](http://tls.sourceforge.net/tls.htm).
+as specified in the [Tcl TLS documentation](https://core.tcl.tk/tcltls/wiki/Documentation).
 
 If a TLS connection is desired, this method needs to be called before _connect_.
 
