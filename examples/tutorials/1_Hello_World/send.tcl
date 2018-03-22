@@ -16,7 +16,7 @@ proc finished {conn closeD} {
     exit
 }
 
-set conn [::rmq::Connection new -debug 1]
+set conn [::rmq::Connection new]
 $conn onConnected create_channel
 $conn onClose finished
 

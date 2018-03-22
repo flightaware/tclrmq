@@ -15,14 +15,15 @@ proc create_channel {conn} {
 proc callback {rChan methodD frameD msg} {
     puts " \[x\] Received $msg"
     set sleepSecs [llength [lsearch -all [split $msg ""] "."]]
+    puts "\tSleeping $sleepSecs secs"
     after [expr {$sleepSecs * 1000}]
     puts " \[x\] Done"
     $rChan basicAck [dict get $methodD deliveryTag]
 }
 
 set conn [::rmq::Connection new]
-$conn connect
 $conn onConnected create_channel
+$conn connect
 
 vwait ::die
 

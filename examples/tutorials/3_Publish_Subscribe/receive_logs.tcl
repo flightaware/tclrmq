@@ -29,8 +29,8 @@ proc callback {rChan methodD frameD msg} {
 }
 
 set conn [::rmq::Connection new]
-$conn connect
 $conn onConnected create_channel
+$conn connect
 
 vwait ::die
 

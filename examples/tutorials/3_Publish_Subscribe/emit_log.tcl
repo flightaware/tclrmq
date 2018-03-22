@@ -1,6 +1,5 @@
 package require rmq
 
-
 proc create_channel {conn} {
     set rChan [::rmq::Channel new $conn]
 
@@ -12,7 +11,11 @@ proc create_channel {conn} {
     $rChan basicPublish $msg "logs" ""
     puts " \[x\] Sent $msg"
 
-    set ::die 1
+    [$rChan getConnection] connectionClose
+}
+
+proc quit {rChan closeD} {
+    exit
 }
 
 global msg
@@ -23,8 +26,9 @@ if {[llength $argv] > 0} {
 }
 
 set conn [::rmq::Connection new]
-$conn connect
 $conn onConnected create_channel
+$conn onClose quit
+$conn connect
 
 vwait ::die
 

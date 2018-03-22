@@ -12,7 +12,11 @@ proc create_channel {conn} {
     $rChan basicPublish $msg "topic_logs" $routingKey
     puts " \[x\] Sent $routingKey:$msg"
 
-    set ::die 1
+    [$rChan getConnection] closeConnection
+}
+
+proc quit {args} {
+    exit
 }
 
 global msg routingKey
@@ -26,9 +30,10 @@ if {[llength $argv] > 0} {
     set msg "Hello World!"
 }
 
-set conn [::rmq::Connection new]
-$conn connect
+set conn [::rmq::Connection new -autoReconnect 0]
 $conn onConnected create_channel
+$conn onClose quit
+$conn connect
 
 vwait ::die
 
