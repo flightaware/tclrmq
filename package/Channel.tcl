@@ -272,32 +272,29 @@ oo::define ::rmq::Channel {
 		::rmq::debug "Channel.Close"
 		set closing 1
 
-		if {$data eq ""} {
-			# need to send a Channel.Close frame
-			set replyCode [::rmq::enc_short $replyCode]
-			set replyText [::rmq::enc_short_string $replyText]
-			set cID [::rmq::enc_short $cID]
-			set mID [::rmq::enc_short $mID]
+        # need to send a Channel.Close frame
+        set replyCode [::rmq::enc_short $replyCode]
+        set replyText [::rmq::enc_short_string $replyText]
+        set cID [::rmq::enc_short $cID]
+        set mID [::rmq::enc_short $mID]
 
-			set methodData "${replyCode}${replyText}${cID}${mID}"
-			set methodData [::rmq::enc_method $::rmq::CHANNEL_CLASS $::rmq::CHANNEL_CLOSE $methodData]
-			$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodData]
-		} else {
-			::rmq::debug "Channel.CloseOk \[$num\] (${replyCode}: $replyText) (classID $cID methodID $mID)"
-		    set closeD [dict create data $data replyCode $replyCode replyText $replyText \
-				                    classID $cID methodID $mID]
-
-			# received a Channel.Close frame
-			set replyCode [::rmq::dec_short $data _]
-			set replyText [::rmq::dec_short_string [string range $data 2 end] bytes]
-			set data [string range $data [expr {2 + $bytes}] end]
-			set classID [::rmq::dec_short $data _]
-			set methodID [::rmq::dec_short [string range $data 2 end] _]
-
-			# send Connection.Close-Ok
-			my sendChannelCloseOk
-		}
+        set methodData "${replyCode}${replyText}${cID}${mID}"
+        set methodData [::rmq::enc_method $::rmq::CHANNEL_CLASS $::rmq::CHANNEL_CLOSE $methodData]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodData]
 	}
+
+    method channelCloseRecv {data} {
+        dict set closeD replyCode [::rmq::dec_short $data _]
+        dict set closeD replyText [::rmq::dec_short_string [string range $data 2 end] bytes]
+        set data [string range $data [expr {2 + $bytes}] end]
+        dict set closeD classID [::rmq::dec_short $data _]
+        dict set closeD methodID [::rmq::dec_short [string range $data 2 end] _]
+
+        ::rmq::debug "Channel.CloseOk \[$num\] ($closeD)"
+
+        # send Connection.Close-Ok
+        my sendChannelCloseOk
+    }
 
 	method channelCloseOk {data} {
 		::rmq::debug "Channel.CloseOk"

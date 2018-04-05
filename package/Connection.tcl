@@ -764,36 +764,31 @@ oo::define ::rmq::Connection {
 		}
 	}
 
-	method connectionClose {{data ""} {replyCode 200} {replyText "Normal"} {cID 0} {mID 0}} {
-		# if data is blank, we are sending this method
-		# otherwise, this message was received
-		if {$data eq ""} {
-			::rmq::debug "Connection.Close"
-			set replyCode [::rmq::enc_short $replyCode]
-			set replyText [::rmq::enc_short_string $replyText]
-			set classID [::rmq::enc_short $cID]
-			set methodID [::rmq::enc_short $mID]
+	method connectionClose {{replyCode 200} {replyText "Normal"} {cID 0} {mID 0}} {
+        ::rmq::debug "Connection.Close"
+        set replyCode [::rmq::enc_short $replyCode]
+        set replyText [::rmq::enc_short_string $replyText]
+        set classID [::rmq::enc_short $cID]
+        set methodID [::rmq::enc_short $mID]
 
-			set methodData "${replyCode}${replyText}${classID}${methodID}"
-			set methodData [::rmq::enc_method $::rmq::CONNECTION_CLASS \
-				$::rmq::CONNECTION_CLOSE $methodData]
-			my send [::rmq::enc_frame $::rmq::FRAME_METHOD 0 $methodData]
-		} else {
-			::rmq::debug "Connection.Close (${replyCode}: $replyText) (classID $cID methodID $mID)"
-		    set closeD [dict create data $data replyCode $replyCode replyText $replyText \
-						            classID $cID methodID $mID
-
-			set replyCode [::rmq::dec_short $data _]
-			set replyText [::rmq::dec_short_string [string range $data 2 end] bytes]
-			set data [string range $data [expr {2 + $bytes}] end]
-			set classID [::rmq::dec_short $data _]
-			set methodID [::rmq::dec_short [string range $data 2 end] _]
-
-
-			# send Connection.Close-Ok
-			my sendConnectionCloseOk
-		}
+        set methodData "${replyCode}${replyText}${classID}${methodID}"
+        set methodData [::rmq::enc_method $::rmq::CONNECTION_CLASS \
+            $::rmq::CONNECTION_CLOSE $methodData]
+        my send [::rmq::enc_frame $::rmq::FRAME_METHOD 0 $methodData]
 	}
+
+    method connectionCloseRecv {data} {
+        dict set closeD replyCode [::rmq::dec_short $data _]
+        dict set closeD replyText [::rmq::dec_short_string [string range $data 2 end] bytes]
+        set data [string range $data [expr {2 + $bytes}] end]
+        dict set closeD classID [::rmq::dec_short $data _]
+        dict set closeD methodID [::rmq::dec_short [string range $data 2 end] _]
+
+        ::rmq::debug "Connection.Close ($closeD)"
+
+        # send Connection.Close-Ok
+        my sendConnectionCloseOk
+    }
 
 	method connectionCloseOk {data} {
 		::rmq::debug "Connection.CloseOk"

@@ -283,7 +283,7 @@ namespace eval rmq {
 		if {$mID eq $::rmq::CONNECTION_TUNE_OK} {return TuneOk}
 		if {$mID eq $::rmq::CONNECTION_OPEN} {return Open}
 		if {$mID eq $::rmq::CONNECTION_OPEN_OK} {return OpenOk}
-		if {$mID eq $::rmq::CONNECTION_CLOSE} {return Close}
+		if {$mID eq $::rmq::CONNECTION_CLOSE} {return CloseRecv}
 		if {$mID eq $::rmq::CONNECTION_CLOSE_OK} {return CloseOk}
 	}
 
@@ -292,7 +292,7 @@ namespace eval rmq {
 		if {$mID eq $::rmq::CHANNEL_OPEN_OK} {return OpenOk}
 		if {$mID eq $::rmq::CHANNEL_FLOW} {return Flow}
 		if {$mID eq $::rmq::CHANNEL_FLOW_OK} {return FlowOk}
-		if {$mID eq $::rmq::CHANNEL_CLOSE} {return Close}
+		if {$mID eq $::rmq::CHANNEL_CLOSE} {return CloseRecv}
 		if {$mID eq $::rmq::CHANNEL_CLOSE_OK} {return CloseOk}
 	}
 
