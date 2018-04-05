@@ -283,7 +283,7 @@ oo::define ::rmq::Channel {
 			set methodData [::rmq::enc_method $::rmq::CHANNEL_CLASS $::rmq::CHANNEL_CLOSE $methodData]
 			$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodData]
 		} else {
-			::rmq::debug "Channel.CloseOk \[$num\] (${replyCode}: $replyText) (classID $classID methodID $methodID)"
+			::rmq::debug "Channel.CloseOk \[$num\] (${replyCode}: $replyText) (classID $cID methodID $mID)"
 		    set closeD [dict create data $data replyCode $replyCode replyText $replyText \
 				                    classID $cID methodID $mID]
 

@@ -779,7 +779,7 @@ oo::define ::rmq::Connection {
 				$::rmq::CONNECTION_CLOSE $methodData]
 			my send [::rmq::enc_frame $::rmq::FRAME_METHOD 0 $methodData]
 		} else {
-			::rmq::debug "Connection.Close (${replyCode}: $replyText) (classID $classID methodID $methodID)"
+			::rmq::debug "Connection.Close (${replyCode}: $replyText) (classID $cID methodID $mID)"
 		    set closeD [dict create data $data replyCode $replyCode replyText $replyText \
 						            classID $cID methodID $mID
 
