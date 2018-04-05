@@ -765,9 +765,6 @@ oo::define ::rmq::Connection {
 	}
 
 	method connectionClose {{data ""} {replyCode 200} {replyText "Normal"} {cID 0} {mID 0}} {
-		dict set closeD data $data replyCode $replyCode replyText $replyText \
-						classID $cID methodID $mID
-
 		# if data is blank, we are sending this method
 		# otherwise, this message was received
 		if {$data eq ""} {
@@ -782,13 +779,16 @@ oo::define ::rmq::Connection {
 				$::rmq::CONNECTION_CLOSE $methodData]
 			my send [::rmq::enc_frame $::rmq::FRAME_METHOD 0 $methodData]
 		} else {
+			::rmq::debug "Connection.Close (${replyCode}: $replyText) (classID $classID methodID $methodID)"
+		    set closeD [dict create data $data replyCode $replyCode replyText $replyText \
+						            classID $cID methodID $mID
+
 			set replyCode [::rmq::dec_short $data _]
 			set replyText [::rmq::dec_short_string [string range $data 2 end] bytes]
 			set data [string range $data [expr {2 + $bytes}] end]
 			set classID [::rmq::dec_short $data _]
 			set methodID [::rmq::dec_short [string range $data 2 end] _]
 
-			::rmq::debug "Connection.Close (${replyCode}: $replyText) (classID $classID methodID $methodID)"
 
 			# send Connection.Close-Ok
 			my sendConnectionCloseOk

@@ -98,9 +98,10 @@ oo::class create ::rmq::Channel {
 		set active 0
 		set closing 0
 
-		if {$closedCB ne ""} {
+	    if {$closedCB ne ""} {
 			{*}$closedCB [self] $closeD
-		}
+	    }
+        set closeD [dict create]
 	}
 
 	method closeConnection {} {
@@ -269,14 +270,12 @@ oo::class create ::rmq::Channel {
 oo::define ::rmq::Channel {
 	method channelClose {{data ""} {replyCode 200} {replyText "Normal"} {cID 0} {mID 0}} {
 		::rmq::debug "Channel.Close"
-		dict set closeD data $data replyCode $replyCode replyText $replyText \
-				 classID $cID methodID $mID
 		set closing 1
 
 		if {$data eq ""} {
 			# need to send a Channel.Close frame
-			set rCode [::rmq::enc_short $replyCode]
-			set rText [::rmq::enc_short_string $replyText]
+			set replyCode [::rmq::enc_short $replyCode]
+			set replyText [::rmq::enc_short_string $replyText]
 			set cID [::rmq::enc_short $cID]
 			set mID [::rmq::enc_short $mID]
 
@@ -284,6 +283,10 @@ oo::define ::rmq::Channel {
 			set methodData [::rmq::enc_method $::rmq::CHANNEL_CLASS $::rmq::CHANNEL_CLOSE $methodData]
 			$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodData]
 		} else {
+			::rmq::debug "Channel.CloseOk \[$num\] (${replyCode}: $replyText) (classID $classID methodID $methodID)"
+		    set closeD [dict create data $data replyCode $replyCode replyText $replyText \
+				                    classID $cID methodID $mID]
+
 			# received a Channel.Close frame
 			set replyCode [::rmq::dec_short $data _]
 			set replyText [::rmq::dec_short_string [string range $data 2 end] bytes]
@@ -293,9 +296,6 @@ oo::define ::rmq::Channel {
 
 			# send Connection.Close-Ok
 			my sendChannelCloseOk
-
-			# invoke channel closed callback
-			::rmq::debug "Channel.CloseOk \[$num\] (${replyCode}: $replyText) (classID $classID methodID $methodID)"
 		}
 	}
 
@@ -431,7 +431,7 @@ oo::define ::rmq::Channel {
 	method exchangeDeclareOk {data} {
 		::rmq::debug "Channel $num Exchange.DeclareOk"
 
-		my callback exchangeDeclareOk 
+		my callback exchangeDeclareOk
 	}
 
 	method exchangeDelete {eName {inUse 0} {noWait 0}} {
@@ -753,7 +753,7 @@ oo::define ::rmq::Channel {
 
 		# if just learned the consumer tag, update callbacks array
 		if {[info exists consumerCBs()]} {
-			::rmq::debug "Have server generated consumer tag, unsetting empty callback key"	
+			::rmq::debug "Have server generated consumer tag, unsetting empty callback key"
 			set consumerCBs($cTag) $consumerCBs()
 			unset consumerCBs()
 		}
