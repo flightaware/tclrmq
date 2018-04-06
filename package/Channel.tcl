@@ -1,265 +1,265 @@
-package provide rmq 1.3.7
+package provide rmq 1.3.8
 
 package require TclOO
 
 namespace eval rmq {
-	namespace export Channel
+    namespace export Channel
 }
 
 oo::class create ::rmq::Channel {
-	# channel is always attached to a connection object
-	# and always has an unsigned int for referring to it
-	variable connection
-	variable num
+    # channel is always attached to a connection object
+    # and always has an unsigned int for referring to it
+    variable connection
+    variable num
 
-	# track whether the channel is open or not
-	variable opened
+    # track whether the channel is open or not
+    variable opened
 
-	# track whether the channel is active or not
-	# as controlled by Channel flow methods
-	variable active
+    # track whether the channel is active or not
+    # as controlled by Channel flow methods
+    variable active
 
-	# track whether the channel is closing or not
-	variable closing
+    # track whether the channel is closing or not
+    variable closing
 
-	# metadata from Connection.Close
-	variable closeD
+    # metadata from Connection.Close
+    variable closeD
 
-	# whether the channel is in confirm mode
-	# and, if so, the publish number of the next message
-	variable confirmMode
+    # whether the channel is in confirm mode
+    # and, if so, the publish number of the next message
+    variable confirmMode
 
-	# can set a callback for when the channel is open or closed
-	# or when the channel receives an error code
-	variable openCB
-	variable closedCB
-	variable errorCB
+    # can set a callback for when the channel is open or closed
+    # or when the channel receives an error code
+    variable openCB
+    variable closedCB
+    variable errorCB
 
-	# more general way of setting a callback on any other method
-	variable callbacksD
+    # more general way of setting a callback on any other method
+    variable callbacksD
 
-	constructor {connectionObj {channelNum ""} {shouldOpen 1}} {
-		set connection $connectionObj
-		if {$channelNum eq "" || $channelNum <= 0} {
-			set num [$connection getNextChannel]
-		} else {
-			set num $channelNum
-		}
+    constructor {connectionObj {channelNum ""} {shouldOpen 1}} {
+        set connection $connectionObj
+        if {$channelNum eq "" || $channelNum <= 0} {
+            set num [$connection getNextChannel]
+        } else {
+            set num $channelNum
+        }
 
-		# store the channel number in the connection
-		# so that responses for this channel can be
-		# received accordingly
-		$connection saveChannel $num [self]
+        # store the channel number in the connection
+        # so that responses for this channel can be
+        # received accordingly
+        $connection saveChannel $num [self]
 
-		# not opened yet
-		set opened 0
+        # not opened yet
+        set opened 0
 
-		# not yet active
-		set active 0
+        # not yet active
+        set active 0
 
-		# not closing
-		set closing 0
+        # not closing
+        set closing 0
 
-		# no closing metadata yet
-		set closeD [dict create]
-
-		# not in cofirm mode
-		set confirmMode 0
-
-		# callbacks for major channel events
-		set openCB ""
-		set closedCB ""
-		set errorCB ""
-
-		# callbacks for all other methods
-		# maps a string of the method to its callback
-		set callbacksD [dict create]
-
-		# handling for Basic method callbacks
-		set methodData [dict create]
-		set frameData [dict create]
-		set receivedData ""
-		array set consumerCBs {}
-		set consumerCBArgs [list]
-		set lastBasicMethod ""
-
-		# send the frame to open the channel if specified
-		if {$shouldOpen} {
-			my channelOpen
-		}
-	}
-
-	method active? {} {
-		return $active
-	}
-
-	method closeChannel {} {
-		set opened 0
-		set active 0
-		set closing 0
-
-	    if {$closedCB ne ""} {
-			{*}$closedCB [self] $closeD
-	    }
+        # no closing metadata yet
         set closeD [dict create]
-	}
 
-	method closeConnection {} {
-		$connection closeConnection
-	}
+        # not in cofirm mode
+        set confirmMode 0
 
-	method closing? {} {
-		return $closing
-	}
+        # callbacks for major channel events
+        set openCB ""
+        set closedCB ""
+        set errorCB ""
 
-	method callback {methodName args} {
-		if {[dict exists $callbacksD $methodName]} {
-			{*}[dict get $callbacksD $methodName] [self] {*}$args
-		}
-	}
+        # callbacks for all other methods
+        # maps a string of the method to its callback
+        set callbacksD [dict create]
 
-	method contentBody {data} {
-		::rmq::debug "Channel $num processing a content body frame"
+        # handling for Basic method callbacks
+        set methodData [dict create]
+        set frameData [dict create]
+        set receivedData ""
+        array set consumerCBs {}
+        set consumerCBArgs [list]
+        set lastBasicMethod ""
 
-		# add the current blob of data to the receivedData variable
-		append receivedData $data
+        # send the frame to open the channel if specified
+        if {$shouldOpen} {
+            my channelOpen
+        }
+    }
 
-		# validate that the frameData variable actually contains
-		# the key we are looking for and, if not, respond with an
-		# appropriate error code
-		if {![dict exists $frameData bodySize]} {
-			# Error code 406 means a precondition failed
-			::rmq::debug "Frame data dict does not contain expected bodySize variable"
-			return [$connection send [::rmq::enc_frame 406 0 ""]]
-		} else {
-			::rmq::debug "Expecting [dict get $frameData bodySize] bytes of data"
-		}
+    method active? {} {
+        return $active
+    }
 
-		if {[string length $receivedData] == [dict get $frameData bodySize]} {
-			::rmq::debug "Received all the data for the content, invoking necessary callback"
+    method closeChannel {} {
+        set opened 0
+        set active 0
+        set closing 0
 
-			# reset all variables used to keep track of consumed data
-			set consumerCBArgs [list $methodData $frameData $receivedData]
+        if {$closedCB ne ""} {
+            {*}$closedCB [self] $closeD
+        }
+        set closeD [dict create]
+    }
 
-			set methodData [dict create]
-			set frameData [dict create]
-			set receivedData ""
+    method closeConnection {} {
+        $connection closeConnection
+    }
 
-			# invoke the callback
-			if {$lastBasicMethod eq "deliver"} {
-				set cTag [dict get [lindex $consumerCBArgs 0] consumerTag]
-				if {[info exists consumerCBs($cTag)]} {
-					after idle [list after 0 [list {*}$consumerCBs($cTag) [self] {*}$consumerCBArgs]]
-				} else {
-					::rmq::debug "Delivered message for consumer tag $cTag, but no callback set"
-				}
-			} elseif {$lastBasicMethod eq "get"} {
-				after idle [list after 0 [list my callback basicDeliver {*}$consumerCBArgs]]
-			} elseif {$lastBasicMethod eq "return"} {
-				after idle [list after 0 [list my callback basicReturn {*}$consumerCBArgs]]
-			} else {
-				::rmq::debug "Received enqueued data ($consumerCBArgs) but no callback set"
-			}
-		} else {
-			::rmq::debug "Received [string length $receivedData] bytes so far"
-		}
-	}
+    method closing? {} {
+        return $closing
+    }
 
-	method contentHeader {headerD} {
-		::rmq::debug "Channel $num processing a content header frame: $headerD"
-		set frameData $headerD
-	}
+    method callback {methodName args} {
+        if {[dict exists $callbacksD $methodName]} {
+            {*}[dict get $callbacksD $methodName] [self] {*}$args
+        }
+    }
 
-	method errorHandler {errorCode data} {
-		::rmq::debug "Channel error handler with code $errorCode and data $data"
+    method contentBody {data} {
+        ::rmq::debug "Channel $num processing a content body frame"
 
-		if {$errorCB ne ""} {
-			{*}$errorCB [self] $errorCode $data
-		}
-	}
+        # add the current blob of data to the receivedData variable
+        append receivedData $data
 
-	method getCallback {amqpMethod} {
-		if {[dict exists $callbacksD $amqpMethod]} {
-			return [dict get $callbacksD $amqpMethod]
-		}
-	}
+        # validate that the frameData variable actually contains
+        # the key we are looking for and, if not, respond with an
+        # appropriate error code
+        if {![dict exists $frameData bodySize]} {
+            # Error code 406 means a precondition failed
+            ::rmq::debug "Frame data dict does not contain expected bodySize variable"
+            return [$connection send [::rmq::enc_frame 406 0 ""]]
+        } else {
+            ::rmq::debug "Expecting [dict get $frameData bodySize] bytes of data"
+        }
 
-	method getChannelNum {} {
-		return $num
-	}
+        if {[string length $receivedData] == [dict get $frameData bodySize]} {
+            ::rmq::debug "Received all the data for the content, invoking necessary callback"
 
-	method getConnection {} {
-		return $connection
-	}
+            # reset all variables used to keep track of consumed data
+            set consumerCBArgs [list $methodData $frameData $receivedData]
 
-	method getConsumerCallbackArgs {} {
-		return $consumerCBArgs
-	}
+            set methodData [dict create]
+            set frameData [dict create]
+            set receivedData ""
 
-	method getFrameData {} {
-		return $frameData
-	}
+            # invoke the callback
+            if {$lastBasicMethod eq "deliver"} {
+                set cTag [dict get [lindex $consumerCBArgs 0] consumerTag]
+                if {[info exists consumerCBs($cTag)]} {
+                    after idle [list after 0 [list {*}$consumerCBs($cTag) [self] {*}$consumerCBArgs]]
+                } else {
+                    ::rmq::debug "Delivered message for consumer tag $cTag, but no callback set"
+                }
+            } elseif {$lastBasicMethod eq "get"} {
+                after idle [list after 0 [list my callback basicDeliver {*}$consumerCBArgs]]
+            } elseif {$lastBasicMethod eq "return"} {
+                after idle [list after 0 [list my callback basicReturn {*}$consumerCBArgs]]
+            } else {
+                ::rmq::debug "Received enqueued data ($consumerCBArgs) but no callback set"
+            }
+        } else {
+            ::rmq::debug "Received [string length $receivedData] bytes so far"
+        }
+    }
 
-	method getMethodData {} {
-		return $methodData
-	}
+    method contentHeader {headerD} {
+        ::rmq::debug "Channel $num processing a content header frame: $headerD"
+        set frameData $headerD
+    }
 
-	method getReceivedData {} {
-		return $receivedData
-	}
+    method errorHandler {errorCode data} {
+        ::rmq::debug "Channel error handler with code $errorCode and data $data"
 
-	method open? {} {
-		return $opened
-	}
+        if {$errorCB ne ""} {
+            {*}$errorCB [self] $errorCode $data
+        }
+    }
 
-	#
-	# alias for setCallback method
-	#
-	method on {amqpMethod cb} {
-		dict set callbacksD $amqpMethod $cb
-	}
+    method getCallback {amqpMethod} {
+        if {[dict exists $callbacksD $amqpMethod]} {
+            return [dict get $callbacksD $amqpMethod]
+        }
+    }
 
-	method onConnect {cb} {
-		set openCB $cb
-	}
+    method getChannelNum {} {
+        return $num
+    }
 
-	method onConnected {cb} {
-		set openCB $cb
-	}
+    method getConnection {} {
+        return $connection
+    }
 
-	method onOpen {cb} {
-		set openCB $cb
-	}
+    method getConsumerCallbackArgs {} {
+        return $consumerCBArgs
+    }
 
-	method onOpened {cb} {
-		set openCB $cb
-	}
+    method getFrameData {} {
+        return $frameData
+    }
 
-	method onClose {cb} {
-		set closedCB $cb
-	}
+    method getMethodData {} {
+        return $methodData
+    }
 
-	method onClosed {cb} {
-		set closedCB $cb
-	}
+    method getReceivedData {} {
+        return $receivedData
+    }
 
-	method onError {cb} {
-		set errorCB $cb
-	}
+    method open? {} {
+        return $opened
+    }
 
-	method removeCallback {amqpMethod} {
-		dict unset callbacksD $amqpMethod
-	}
+    #
+    # alias for setCallback method
+    #
+    method on {amqpMethod cb} {
+        dict set callbacksD $amqpMethod $cb
+    }
 
-	method removeCallbacks {} {
-		set callbacksD [dict create]
-		array unset consumerCBs
-		array set consumerCBs {}
-	}
+    method onConnect {cb} {
+        set openCB $cb
+    }
 
-	method setCallback {amqpMethod cb} {
-		dict set callbacksD $amqpMethod $cb
-	}
+    method onConnected {cb} {
+        set openCB $cb
+    }
+
+    method onOpen {cb} {
+        set openCB $cb
+    }
+
+    method onOpened {cb} {
+        set openCB $cb
+    }
+
+    method onClose {cb} {
+        set closedCB $cb
+    }
+
+    method onClosed {cb} {
+        set closedCB $cb
+    }
+
+    method onError {cb} {
+        set errorCB $cb
+    }
+
+    method removeCallback {amqpMethod} {
+        dict unset callbacksD $amqpMethod
+    }
+
+    method removeCallbacks {} {
+        set callbacksD [dict create]
+        array unset consumerCBs
+        array set consumerCBs {}
+    }
+
+    method setCallback {amqpMethod cb} {
+        dict set callbacksD $amqpMethod $cb
+    }
 }
 
 ##
@@ -268,9 +268,9 @@ oo::class create ::rmq::Channel {
 ##
 ##
 oo::define ::rmq::Channel {
-	method channelClose {{data ""} {replyCode 200} {replyText "Normal"} {cID 0} {mID 0}} {
-		::rmq::debug "Channel.Close"
-		set closing 1
+    method channelClose {{data ""} {replyCode 200} {replyText "Normal"} {cID 0} {mID 0}} {
+        ::rmq::debug "Channel.Close"
+        set closing 1
 
         # need to send a Channel.Close frame
         set replyCode [::rmq::enc_short $replyCode]
@@ -281,7 +281,7 @@ oo::define ::rmq::Channel {
         set methodData "${replyCode}${replyText}${cID}${mID}"
         set methodData [::rmq::enc_method $::rmq::CHANNEL_CLASS $::rmq::CHANNEL_CLOSE $methodData]
         $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodData]
-	}
+    }
 
     method channelCloseRecv {data} {
         dict set closeD replyCode [::rmq::dec_short $data _]
@@ -296,61 +296,61 @@ oo::define ::rmq::Channel {
         my sendChannelCloseOk
     }
 
-	method channelCloseOk {data} {
-		::rmq::debug "Channel.CloseOk"
-		my closeChannel
-	}
+    method channelCloseOk {data} {
+        ::rmq::debug "Channel.CloseOk"
+        my closeChannel
+    }
 
-	method channelFlow {data} {
-		::rmq::debug "Channel.Flow"
-		set active [::rmq::dec_byte $data _]
-		my sendChannelFlowOk
-	}
+    method channelFlow {data} {
+        ::rmq::debug "Channel.Flow"
+        set active [::rmq::dec_byte $data _]
+        my sendChannelFlowOk
+    }
 
-	method channelFlowOk {data} {
-		set active [::rmq::dec_byte $data _]
-		::rmq::debug "Channel.FlowOk (active $active)"
-	}
+    method channelFlowOk {data} {
+        set active [::rmq::dec_byte $data _]
+        ::rmq::debug "Channel.FlowOk (active $active)"
+    }
 
-	method channelOpen {} {
-		::rmq::debug "Channel.Open channel $num"
+    method channelOpen {} {
+        ::rmq::debug "Channel.Open channel $num"
 
-		set payload [::rmq::enc_short_string ""]
-		set payload [::rmq::enc_method $::rmq::CHANNEL_CLASS $::rmq::CHANNEL_OPEN $payload]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $payload]
-	}
+        set payload [::rmq::enc_short_string ""]
+        set payload [::rmq::enc_method $::rmq::CHANNEL_CLASS $::rmq::CHANNEL_OPEN $payload]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $payload]
+    }
 
-	method channelOpenOk {data} {
-		::rmq::debug "Channel.OpenOk channel $num"
-		set opened 1
-		set active 1
+    method channelOpenOk {data} {
+        ::rmq::debug "Channel.OpenOk channel $num"
+        set opened 1
+        set active 1
 
-		if {$openCB ne ""} {
-			{*}$openCB [self]
-		}
-	}
+        if {$openCB ne ""} {
+            {*}$openCB [self]
+        }
+    }
 
-	method sendChannelCloseOk {} {
-		set methodData [::rmq::enc_method $::rmq::CHANNEL_CLASS $::rmq::CHANNEL_CLOSE_OK ""]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodData]
-		my closeChannel
-	}
+    method sendChannelCloseOk {} {
+        set methodData [::rmq::enc_method $::rmq::CHANNEL_CLASS $::rmq::CHANNEL_CLOSE_OK ""]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodData]
+        my closeChannel
+    }
 
-	method sendChannelFlow {flowActive} {
-		::rmq::debug "Sending Channel.Flow (active $flowActive)"
+    method sendChannelFlow {flowActive} {
+        ::rmq::debug "Sending Channel.Flow (active $flowActive)"
 
-		set payload [::rmq::enc_byte $flowActive]
-		set payload [::rmq::enc_method $::rmq::CHANNEL_CLASS $::rmq::CHANNEL_FLOW $payload]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $payload]
-	}
+        set payload [::rmq::enc_byte $flowActive]
+        set payload [::rmq::enc_method $::rmq::CHANNEL_CLASS $::rmq::CHANNEL_FLOW $payload]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $payload]
+    }
 
-	method sendChannelFlowOk {} {
-		::rmq::debug "Sending Channel.FlowOk (active $active)"
+    method sendChannelFlowOk {} {
+        ::rmq::debug "Sending Channel.FlowOk (active $active)"
 
-		set payload [::rmq::enc_byte $active]
-		set payload [::rmq::enc_method $::rmq::CHANNEL_CLASS $::rmq::CHANNEL_FLOW $payload]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $payload]
-	}
+        set payload [::rmq::enc_byte $active]
+        set payload [::rmq::enc_method $::rmq::CHANNEL_CLASS $::rmq::CHANNEL_FLOW $payload]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $payload]
+    }
 }
 
 ##
@@ -359,147 +359,147 @@ oo::define ::rmq::Channel {
 ##
 ##
 oo::define ::rmq::Channel {
-	method exchangeBind {dst src rKey {noWait 0} {eArgs ""}} {
-		::rmq::debug "Channel $num Exchange.Bind"
+    method exchangeBind {dst src rKey {noWait 0} {eArgs ""}} {
+        ::rmq::debug "Channel $num Exchange.Bind"
 
-		# there's a reserved short field
-		set reserved [::rmq::enc_short 0]
+        # there's a reserved short field
+        set reserved [::rmq::enc_short 0]
 
-		# name of the destination exchange to bind
-		set dst [::rmq::enc_short_string $dst]
+        # name of the destination exchange to bind
+        set dst [::rmq::enc_short_string $dst]
 
-		# name of the source exchange to bind
-		set src [::rmq::enc_short_string $src]
+        # name of the source exchange to bind
+        set src [::rmq::enc_short_string $src]
 
-		# routing key for the binding
-		set rKey [::rmq::enc_short_string $rKey]
+        # routing key for the binding
+        set rKey [::rmq::enc_short_string $rKey]
 
-		# whether or not to wait on a response
-		set noWait [::rmq::enc_byte $noWait]
+        # whether or not to wait on a response
+        set noWait [::rmq::enc_byte $noWait]
 
-		# additional args as a field table
-		set eArgs [::rmq::enc_field_table $eArgs]
+        # additional args as a field table
+        set eArgs [::rmq::enc_field_table $eArgs]
 
-		# build up the payload to send
-		set payload "${reserved}${dst}${src}${rKey}${noWait}${eArgs}"
-		set methodLayer [::rmq::enc_method $::rmq::EXCHANGE_CLASS \
-			$::rmq::EXCHANGE_BIND $payload]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
+        # build up the payload to send
+        set payload "${reserved}${dst}${src}${rKey}${noWait}${eArgs}"
+        set methodLayer [::rmq::enc_method $::rmq::EXCHANGE_CLASS \
+            $::rmq::EXCHANGE_BIND $payload]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
 
-	method exchangeBindOk {data} {
-		::rmq::debug "Channel $num Exchange.BindOk"
+    method exchangeBindOk {data} {
+        ::rmq::debug "Channel $num Exchange.BindOk"
 
-		# nothing really passed into this method
-		my callback exchangeBindOk
-	}
+        # nothing really passed into this method
+        my callback exchangeBindOk
+    }
 
-	method exchangeDeclare {eName eType {eFlags ""} {eArgs ""}} {
-		::rmq::debug "Channel $num Exchange.Declare"
+    method exchangeDeclare {eName eType {eFlags ""} {eArgs ""}} {
+        ::rmq::debug "Channel $num Exchange.Declare"
 
-		# there's a reserved short field
-		set reserved [::rmq::enc_short 0]
+        # there's a reserved short field
+        set reserved [::rmq::enc_short 0]
 
-		# need the exchange name and type
-		set eName [::rmq::enc_short_string $eName]
-		set eType [::rmq::enc_short_string $eType]
+        # need the exchange name and type
+        set eName [::rmq::enc_short_string $eName]
+        set eType [::rmq::enc_short_string $eType]
 
-		# set the series of flags (from low-to-high)
-		# passive, durable, auto-delete, internal, no-wait
-		set flags 0
-		foreach eFlag $eFlags {
-			set flags [expr {$flags | $eFlag}]
-		}
-		set flags [::rmq::enc_byte $flags]
+        # set the series of flags (from low-to-high)
+        # passive, durable, auto-delete, internal, no-wait
+        set flags 0
+        foreach eFlag $eFlags {
+            set flags [expr {$flags | $eFlag}]
+        }
+        set flags [::rmq::enc_byte $flags]
 
-		# possible to have a field table of arguments
-		set eArgs [::rmq::enc_field_table $eArgs]
+        # possible to have a field table of arguments
+        set eArgs [::rmq::enc_field_table $eArgs]
 
-		# build up the payload to send
-		set payload "${reserved}${eName}${eType}${flags}${eArgs}"
-		set methodLayer [::rmq::enc_method $::rmq::EXCHANGE_CLASS \
-			$::rmq::EXCHANGE_DECLARE $payload]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
+        # build up the payload to send
+        set payload "${reserved}${eName}${eType}${flags}${eArgs}"
+        set methodLayer [::rmq::enc_method $::rmq::EXCHANGE_CLASS \
+            $::rmq::EXCHANGE_DECLARE $payload]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
 
-	#
-	# set a callback with the name exchangeDeclareOk
-	#
-	method exchangeDeclareOk {data} {
-		::rmq::debug "Channel $num Exchange.DeclareOk"
+    #
+    # set a callback with the name exchangeDeclareOk
+    #
+    method exchangeDeclareOk {data} {
+        ::rmq::debug "Channel $num Exchange.DeclareOk"
 
-		my callback exchangeDeclareOk
-	}
+        my callback exchangeDeclareOk
+    }
 
-	method exchangeDelete {eName {inUse 0} {noWait 0}} {
-		::rmq::debug "Channel $num Exchange.Delete"
+    method exchangeDelete {eName {inUse 0} {noWait 0}} {
+        ::rmq::debug "Channel $num Exchange.Delete"
 
-		# reserved short field
-		set reserved [::rmq::enc_short 0]
+        # reserved short field
+        set reserved [::rmq::enc_short 0]
 
-		# set the exchange name
-		set eName [::rmq::enc_short_string $eName]
+        # set the exchange name
+        set eName [::rmq::enc_short_string $eName]
 
-		# set the bit fields for in-use and no-wait
-		set flags 0
-		if {$inUse} {
-			set flags [expr {$flags | 1}]
-		}
+        # set the bit fields for in-use and no-wait
+        set flags 0
+        if {$inUse} {
+            set flags [expr {$flags | 1}]
+        }
 
-		if {$noWait} {
-			set flags [expr {$flags | 2}]
-		}
-		set flags [::rmq::enc_byte $flags]
+        if {$noWait} {
+            set flags [expr {$flags | 2}]
+        }
+        set flags [::rmq::enc_byte $flags]
 
-		# now can package this up and send
-		set payload "${reserved}${eName}${flags}"
-		set methodLayer [::rmq::enc_method $::rmq::EXCHANGE_CLASS \
-			$::rmq::EXCHANGE_DELETE $payload]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
+        # now can package this up and send
+        set payload "${reserved}${eName}${flags}"
+        set methodLayer [::rmq::enc_method $::rmq::EXCHANGE_CLASS \
+            $::rmq::EXCHANGE_DELETE $payload]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
 
-	#
-	# set a callback with the name exchangeDeleteOk
-	#
-	method exchangeDeleteOk {data} {
-		::rmq::debug "Channel $num Exchange.DeleteOk"
+    #
+    # set a callback with the name exchangeDeleteOk
+    #
+    method exchangeDeleteOk {data} {
+        ::rmq::debug "Channel $num Exchange.DeleteOk"
 
-		my callback exchangeDeleteOk
-	}
+        my callback exchangeDeleteOk
+    }
 
-	method exchangeUnbind {dst src rKey {noWait 0} {eArgs ""}} {
-		::rmq::debug "Channel $num Exchange.Unbind"
-		# there's a reserved short field
-		set reserved [::rmq::enc_short 0]
+    method exchangeUnbind {dst src rKey {noWait 0} {eArgs ""}} {
+        ::rmq::debug "Channel $num Exchange.Unbind"
+        # there's a reserved short field
+        set reserved [::rmq::enc_short 0]
 
-		# name of the destination exchange to bind
-		set dst [::rmq::enc_short_string $dst]
+        # name of the destination exchange to bind
+        set dst [::rmq::enc_short_string $dst]
 
-		# name of the source exchange to bind
-		set src [::rmq::enc_short_string $src]
+        # name of the source exchange to bind
+        set src [::rmq::enc_short_string $src]
 
-		# routing key for the binding
-		set rKey [::rmq::enc_short_string $rKey]
+        # routing key for the binding
+        set rKey [::rmq::enc_short_string $rKey]
 
-		# whether or not to wait on a response
-		set noWait [::rmq::enc_byte $noWait]
+        # whether or not to wait on a response
+        set noWait [::rmq::enc_byte $noWait]
 
-		# additional args as a field table
-		set eArgs [::rmq::enc_field_table $eArgs]
+        # additional args as a field table
+        set eArgs [::rmq::enc_field_table $eArgs]
 
-		# build up the payload to send
-		set payload "${reserved}${dst}${src}${rKey}${noWait}${eArgs}"
-		set methodLayer [::rmq::enc_method $::rmq::EXCHANGE_CLASS \
-			$::rmq::EXCHANGE_UNBIND $payload]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
+        # build up the payload to send
+        set payload "${reserved}${dst}${src}${rKey}${noWait}${eArgs}"
+        set methodLayer [::rmq::enc_method $::rmq::EXCHANGE_CLASS \
+            $::rmq::EXCHANGE_UNBIND $payload]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
 
-	method exchangeUnbindOk {data} {
-		::rmq::debug "Channel $num Exchange.UnbindOk"
+    method exchangeUnbindOk {data} {
+        ::rmq::debug "Channel $num Exchange.UnbindOk"
 
-		# nothing really passed into this method
-		my callback exchangeUnbindOk ""
-	}
+        # nothing really passed into this method
+        my callback exchangeUnbindOk ""
+    }
 }
 
 ##
@@ -508,181 +508,181 @@ oo::define ::rmq::Channel {
 ##
 ##
 oo::define ::rmq::Channel {
-	method queueBind {qName eName {rKey ""} {noWait 0} {qArgs ""}} {
-		::rmq::debug "Queue.Bind"
+    method queueBind {qName eName {rKey ""} {noWait 0} {qArgs ""}} {
+        ::rmq::debug "Queue.Bind"
 
-		# deprecated short ticket field set to 0
-		set ticket [::rmq::enc_short 0]
+        # deprecated short ticket field set to 0
+        set ticket [::rmq::enc_short 0]
 
-		# queue name
-		set qName [::rmq::enc_short_string $qName]
+        # queue name
+        set qName [::rmq::enc_short_string $qName]
 
-		# exchange name
-		set eName [::rmq::enc_short_string $eName]
+        # exchange name
+        set eName [::rmq::enc_short_string $eName]
 
-		# routing key
-		set rKey [::rmq::enc_short_string $rKey]
+        # routing key
+        set rKey [::rmq::enc_short_string $rKey]
 
-		# no wait bit
-		set noWait [::rmq::enc_byte $noWait]
+        # no wait bit
+        set noWait [::rmq::enc_byte $noWait]
 
-		# additional args as a field table
-		set qArgs [::rmq::enc_field_table $qArgs]
+        # additional args as a field table
+        set qArgs [::rmq::enc_field_table $qArgs]
 
-		# now ready to send the payload
-		set methodLayer [::rmq::enc_method $::rmq::QUEUE_CLASS \
-			$::rmq::QUEUE_BIND \
-			${ticket}${qName}${eName}${rKey}${noWait}${qArgs}]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
+        # now ready to send the payload
+        set methodLayer [::rmq::enc_method $::rmq::QUEUE_CLASS \
+            $::rmq::QUEUE_BIND \
+            ${ticket}${qName}${eName}${rKey}${noWait}${qArgs}]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
 
-	#
-	# set a callback with the name queueBindOk
-	#
-	method queueBindOk {data} {
-		::rmq::debug "Queue.BindOk"
+    #
+    # set a callback with the name queueBindOk
+    #
+    method queueBindOk {data} {
+        ::rmq::debug "Queue.BindOk"
 
-		# No parameters included
-		my callback queueBindOk
-	}
+        # No parameters included
+        my callback queueBindOk
+    }
 
-	method queueDeclare {qName {qFlags ""} {qArgs ""}} {
-		::rmq::debug "Queue.Declare"
+    method queueDeclare {qName {qFlags ""} {qArgs ""}} {
+        ::rmq::debug "Queue.Declare"
 
-		# a short reserved field
-		set reserved [::rmq::enc_short 0]
+        # a short reserved field
+        set reserved [::rmq::enc_short 0]
 
-		# queue name
-		set qName [::rmq::enc_short_string $qName]
+        # queue name
+        set qName [::rmq::enc_short_string $qName]
 
-		# passive, durable, exclusive, auto-delete, no-wait
-		set flags 0
-		foreach qFlag $qFlags {
-			set flags [expr {$flags | $qFlag}]
-		}
-		set flags [::rmq::enc_byte $flags]
+        # passive, durable, exclusive, auto-delete, no-wait
+        set flags 0
+        foreach qFlag $qFlags {
+            set flags [expr {$flags | $qFlag}]
+        }
+        set flags [::rmq::enc_byte $flags]
 
-		# arguments for declaration
-		set qArgs [::rmq::enc_field_table $qArgs]
+        # arguments for declaration
+        set qArgs [::rmq::enc_field_table $qArgs]
 
-		# create the method frame with its payload
-		set methodLayer [::rmq::enc_method $::rmq::QUEUE_CLASS \
-			$::rmq::QUEUE_DECLARE \
-			${reserved}${qName}${flags}${qArgs}]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
+        # create the method frame with its payload
+        set methodLayer [::rmq::enc_method $::rmq::QUEUE_CLASS \
+            $::rmq::QUEUE_DECLARE \
+            ${reserved}${qName}${flags}${qArgs}]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
 
-	#
-	# set a callback with the name queueDeclareOk
-	#
-	method queueDeclareOk {data} {
-		# Grab the data from the response
-		set qName [::rmq::dec_short_string $data bytes]
-		set data [string range $data $bytes end]
+    #
+    # set a callback with the name queueDeclareOk
+    #
+    method queueDeclareOk {data} {
+        # Grab the data from the response
+        set qName [::rmq::dec_short_string $data bytes]
+        set data [string range $data $bytes end]
 
-		set msgCount [::rmq::dec_ulong $data bytes]
-		set data [string range $data $bytes end]
+        set msgCount [::rmq::dec_ulong $data bytes]
+        set data [string range $data $bytes end]
 
-		set consumers [::rmq::dec_ulong $data bytes]
+        set consumers [::rmq::dec_ulong $data bytes]
 
-		::rmq::debug "Queue.DeclareOk (name $qName) (msgs $msgCount) (consumers $consumers)"
+        ::rmq::debug "Queue.DeclareOk (name $qName) (msgs $msgCount) (consumers $consumers)"
 
-		my callback queueDeclareOk $qName $msgCount $consumers
-	}
+        my callback queueDeclareOk $qName $msgCount $consumers
+    }
 
-	method queueDelete {qName {flags ""}} {
-		::rmq::debug "Queue.Delete"
+    method queueDelete {qName {flags ""}} {
+        ::rmq::debug "Queue.Delete"
 
-		set reserved [::rmq::enc_short 0]
+        set reserved [::rmq::enc_short 0]
 
-		set qName [::rmq::enc_short_string $qName]
+        set qName [::rmq::enc_short_string $qName]
 
-		set dFlags 0
-		foreach flag $flags {
-			set dFlags [expr {$dFlags | $flag}]
-		}
-		set dFlags [::rmq::enc_byte $dFlags]
+        set dFlags 0
+        foreach flag $flags {
+            set dFlags [expr {$dFlags | $flag}]
+        }
+        set dFlags [::rmq::enc_byte $dFlags]
 
-		set methodLayer [::rmq::enc_method $::rmq::QUEUE_CLASS \
-			$::rmq::QUEUE_DELETE \
-			${reserved}${qName}${dFlags}]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
+        set methodLayer [::rmq::enc_method $::rmq::QUEUE_CLASS \
+            $::rmq::QUEUE_DELETE \
+            ${reserved}${qName}${dFlags}]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
 
-	#
-	# set a callback with the name queueDeleteOk
-	#
-	method queueDeleteOk {data} {
-		::rmq::debug "Queue.DeleteOk"
+    #
+    # set a callback with the name queueDeleteOk
+    #
+    method queueDeleteOk {data} {
+        ::rmq::debug "Queue.DeleteOk"
 
-		set msgCount [::rmq::dec_ulong $data _]
+        set msgCount [::rmq::dec_ulong $data _]
 
-		my callback queueDeleteOk $msgCount
-	}
+        my callback queueDeleteOk $msgCount
+    }
 
-	method queuePurge {qName {noWait 0}} {
-		::rmq::debug "Queue.Purge"
+    method queuePurge {qName {noWait 0}} {
+        ::rmq::debug "Queue.Purge"
 
-		# reserved short field
-		set reserved [::rmq::enc_short 0]
+        # reserved short field
+        set reserved [::rmq::enc_short 0]
 
-		# queue name
-		set qName [::rmq::enc_short_string $qName]
+        # queue name
+        set qName [::rmq::enc_short_string $qName]
 
-		# no wait bit
-		set noWait [::rmq::enc_byte $noWait]
+        # no wait bit
+        set noWait [::rmq::enc_byte $noWait]
 
-		set methodLayer [::rmq::enc_method $::rmq::QUEUE_CLASS \
-			$::rmq::QUEUE_PURGE \
-			${reserved}${qName}${noWait}]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
+        set methodLayer [::rmq::enc_method $::rmq::QUEUE_CLASS \
+            $::rmq::QUEUE_PURGE \
+            ${reserved}${qName}${noWait}]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
 
-	#
-	# set a callback with the name queuePurgeOk
-	#
-	method queuePurgeOk {data} {
-		::rmq::debug "Queue.PurgeOk"
+    #
+    # set a callback with the name queuePurgeOk
+    #
+    method queuePurgeOk {data} {
+        ::rmq::debug "Queue.PurgeOk"
 
-		set msgCount [::rmq::dec_ulong $data _]
+        set msgCount [::rmq::dec_ulong $data _]
 
-		my callback queuePurgeOk $msgCount
-	}
+        my callback queuePurgeOk $msgCount
+    }
 
-	method queueUnbind {qName eName rKey {qArgs ""}} {
-		::rmq::debug "Queue.Unbind"
+    method queueUnbind {qName eName rKey {qArgs ""}} {
+        ::rmq::debug "Queue.Unbind"
 
-		# reserved short field
-		set reserved [::rmq::enc_short 0]
+        # reserved short field
+        set reserved [::rmq::enc_short 0]
 
-		# queue name
-		set qName [::rmq::enc_short_string $qName]
+        # queue name
+        set qName [::rmq::enc_short_string $qName]
 
-		# exchange name
-		set eName [::rmq::enc_short_string $eName]
+        # exchange name
+        set eName [::rmq::enc_short_string $eName]
 
-		# routing key
-		set rKey [::rmq::enc_short_string $rKey]
+        # routing key
+        set rKey [::rmq::enc_short_string $rKey]
 
-		# additional arguments
-		set qArgs [::rmq::enc_field_table $qArgs]
+        # additional arguments
+        set qArgs [::rmq::enc_field_table $qArgs]
 
-		# bundle it up and send it off
-		set methodLayer [::rmq::enc_method $::rmq::QUEUE_CLASS \
-			$::rmq::QUEUE_UNBIND \
-			${reserved}${qName}${eName}${rKey}${qArgs}]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
+        # bundle it up and send it off
+        set methodLayer [::rmq::enc_method $::rmq::QUEUE_CLASS \
+            $::rmq::QUEUE_UNBIND \
+            ${reserved}${qName}${eName}${rKey}${qArgs}]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
 
-	#
-	# set a callback with the name queueUnbindOk
-	#
-	method queueUnbindOk {data} {
-		::rmq::debug "Queue.UnbindOk"
+    #
+    # set a callback with the name queueUnbindOk
+    #
+    method queueUnbindOk {data} {
+        ::rmq::debug "Queue.UnbindOk"
 
-		# No parameters included
-		my callback queueUnbindOk
-	}
+        # No parameters included
+        my callback queueUnbindOk
+    }
 }
 
 ##
@@ -691,331 +691,331 @@ oo::define ::rmq::Channel {
 ##
 ##
 oo::define ::rmq::Channel {
-	# housekeeping for the receiving of data
-	variable lastBasicMethod
-	variable methodData
-	variable frameData
-	variable receivedData
-	variable consumerCBs
-	variable consumerCBArgs
+    # housekeeping for the receiving of data
+    variable lastBasicMethod
+    variable methodData
+    variable frameData
+    variable receivedData
+    variable consumerCBs
+    variable consumerCBArgs
 
-	method basicAck {deliveryTag {multiple 0}} {
-		::rmq::debug "Basic.Ack"
+    method basicAck {deliveryTag {multiple 0}} {
+        ::rmq::debug "Basic.Ack"
 
-		set deliveryTag [::rmq::enc_ulong_long $deliveryTag]
-		set multiple [::rmq::enc_byte $multiple]
+        set deliveryTag [::rmq::enc_ulong_long $deliveryTag]
+        set multiple [::rmq::enc_byte $multiple]
 
-		set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
-			$::rmq::BASIC_ACK ${deliveryTag}${multiple}]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
+        set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
+            $::rmq::BASIC_ACK ${deliveryTag}${multiple}]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
 
-	method basicAckReceived {data} {
-		set deliveryTag [::rmq::dec_ulong_long $data bytes]
-		set multiple [::rmq::dec_byte [string range $data $bytes end] _]
+    method basicAckReceived {data} {
+        set deliveryTag [::rmq::dec_ulong_long $data bytes]
+        set multiple [::rmq::dec_byte [string range $data $bytes end] _]
 
-		::rmq::debug "Basic.Ack received for $deliveryTag with multiple ($multiple)"
-		my callback basicAck $deliveryTag $multiple
-	}
+        ::rmq::debug "Basic.Ack received for $deliveryTag with multiple ($multiple)"
+        my callback basicAck $deliveryTag $multiple
+    }
 
-	method basicConsume {callback qName {cTag ""} {cFlags ""} {cArgs ""}} {
-		::rmq::debug "Basic.Consume"
+    method basicConsume {callback qName {cTag ""} {cFlags ""} {cArgs ""}} {
+        ::rmq::debug "Basic.Consume"
 
-		# setup for the callback
-		my setCallback basicDeliver $callback
-		set consumerCBs($cTag) $callback
+        # setup for the callback
+        my setCallback basicDeliver $callback
+        set consumerCBs($cTag) $callback
 
-		set reserved [::rmq::enc_short 0]
-		set qName [::rmq::enc_short_string $qName]
-		set cTag [::rmq::enc_short_string $cTag]
+        set reserved [::rmq::enc_short 0]
+        set qName [::rmq::enc_short_string $qName]
+        set cTag [::rmq::enc_short_string $cTag]
 
-		# no-local, no-ack, exclusive, no-wait
-		set flags 0
-		foreach cFlag $cFlags {
-			set flags [expr {$flags | $cFlag}]
-		}
-		set flags [::rmq::enc_byte $flags]
+        # no-local, no-ack, exclusive, no-wait
+        set flags 0
+        foreach cFlag $cFlags {
+            set flags [expr {$flags | $cFlag}]
+        }
+        set flags [::rmq::enc_byte $flags]
 
-		set cArgs [::rmq::enc_field_table $cArgs]
+        set cArgs [::rmq::enc_field_table $cArgs]
 
-		set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
-			$::rmq::BASIC_CONSUME \
-			${reserved}${qName}${cTag}${flags}${cArgs}]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
+        set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
+            $::rmq::BASIC_CONSUME \
+            ${reserved}${qName}${cTag}${flags}${cArgs}]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
 
-	method basicConsumeOk {data} {
-		set cTag [::rmq::dec_short_string $data _]
-		::rmq::debug "Basic.ConsumeOk (consumer tag: $cTag)"
+    method basicConsumeOk {data} {
+        set cTag [::rmq::dec_short_string $data _]
+        ::rmq::debug "Basic.ConsumeOk (consumer tag: $cTag)"
 
-		# if just learned the consumer tag, update callbacks array
-		if {[info exists consumerCBs()]} {
-			::rmq::debug "Have server generated consumer tag, unsetting empty callback key"
-			set consumerCBs($cTag) $consumerCBs()
-			unset consumerCBs()
-		}
+        # if just learned the consumer tag, update callbacks array
+        if {[info exists consumerCBs()]} {
+            ::rmq::debug "Have server generated consumer tag, unsetting empty callback key"
+            set consumerCBs($cTag) $consumerCBs()
+            unset consumerCBs()
+        }
 
-		my callback basicConsumeOk $cTag
-	}
+        my callback basicConsumeOk $cTag
+    }
 
-	method basicCancel {cTag {noWait 0}} {
-		::rmq::debug "Basic.Cancel"
+    method basicCancel {cTag {noWait 0}} {
+        ::rmq::debug "Basic.Cancel"
 
-		set cTag [::rmq::enc_short_string $cTag]
-		set noWait [::rmq::enc_byte $noWait]
+        set cTag [::rmq::enc_short_string $cTag]
+        set noWait [::rmq::enc_byte $noWait]
 
-		set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
-			$::rmq::BASIC_CANCEL \
-			${cTag}${noWait}]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
+        set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
+            $::rmq::BASIC_CANCEL \
+            ${cTag}${noWait}]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
 
-	method basicCancelOk {data} {
-		::rmq::debug "Basic.CancelOk"
+    method basicCancelOk {data} {
+        ::rmq::debug "Basic.CancelOk"
 
-		set cTag [::rmq::dec_short_string $data _]
+        set cTag [::rmq::dec_short_string $data _]
 
-		my callback basicCancelOk $cTag
-	}
+        my callback basicCancelOk $cTag
+    }
 
-	method basicCancelRecv {data} {
-		set cTag [::rmq::dec_short_string $data _]
+    method basicCancelRecv {data} {
+        set cTag [::rmq::dec_short_string $data _]
 
-		::rmq::debug "Basic.Cancel received for consumer tag $cTag"
+        ::rmq::debug "Basic.Cancel received for consumer tag $cTag"
 
-		array unset consumerCBs $cTag
-
-		my callback basicCancel $cTag
-	}
+        array unset consumerCBs $cTag
+
+        my callback basicCancel $cTag
+    }
 
-	method basicDeliver {data} {
-		::rmq::debug "Basic.Deliver"
+    method basicDeliver {data} {
+        ::rmq::debug "Basic.Deliver"
 
-		set cTag [::rmq::dec_short_string $data bytes]
-		set data [string range $data $bytes end]
-
-		set dTag [::rmq::dec_ulong_long $data bytes]
-		set data [string range $data $bytes end]
-
-		set redelivered [::rmq::dec_byte $data bytes]
-		set data [string range $data $bytes end]
-
-		set eName [::rmq::dec_short_string $data bytes]
-		set data [string range $data $bytes end]
-
-		set rKey [::rmq::dec_short_string $data bytes]
-
-		# save the basic deliver data for passing to the user
-		# callback after the body frame is received
-		set methodData [dict create \
-			consumerTag $cTag \
-			deliveryTag $dTag \
-			redelivered $redelivered \
-			exchange $eName \
-			routingKey $rKey]
-		set lastBasicMethod deliver
-	}
-
-	method basicGet {callback qName {noAck 1}} {
-		::rmq::debug "Basic.Get"
-
-		my setCallback basicDeliver $callback
-		set lastBasicMethod get
-
-		set reserved [::rmq::enc_short 0]
-		set qName [::rmq::enc_short_string $qName]
-		set noAck [::rmq::enc_byte $noAck]
-
-		set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
-			$::rmq::BASIC_GET \
-			${reserved}${qName}${noAck}]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
+        set cTag [::rmq::dec_short_string $data bytes]
+        set data [string range $data $bytes end]
+
+        set dTag [::rmq::dec_ulong_long $data bytes]
+        set data [string range $data $bytes end]
+
+        set redelivered [::rmq::dec_byte $data bytes]
+        set data [string range $data $bytes end]
+
+        set eName [::rmq::dec_short_string $data bytes]
+        set data [string range $data $bytes end]
+
+        set rKey [::rmq::dec_short_string $data bytes]
+
+        # save the basic deliver data for passing to the user
+        # callback after the body frame is received
+        set methodData [dict create \
+            consumerTag $cTag \
+            deliveryTag $dTag \
+            redelivered $redelivered \
+            exchange $eName \
+            routingKey $rKey]
+        set lastBasicMethod deliver
+    }
+
+    method basicGet {callback qName {noAck 1}} {
+        ::rmq::debug "Basic.Get"
+
+        my setCallback basicDeliver $callback
+        set lastBasicMethod get
+
+        set reserved [::rmq::enc_short 0]
+        set qName [::rmq::enc_short_string $qName]
+        set noAck [::rmq::enc_byte $noAck]
+
+        set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
+            $::rmq::BASIC_GET \
+            ${reserved}${qName}${noAck}]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
 
-	method basicGetEmpty {data} {
-		::rmq::debug "Basic.GetEmpty"
-
-		# only have a single reserved parameter
-
-		# save an empty method data dict for this case
-		set methodData [dict create]
-		set lastBasicMethod get
-	}
-
-	method basicGetOk {data} {
-		::rmq::debug "Basic.GetOk"
-
-		set dTag [::rmq::dec_ulong_long $data bytes]
-		set data [string range $data $bytes end]
-
-		set redelivered [::rmq::dec_byte $data bytes]
-		set data [string range $data $bytes end]
-
-		set eName [::rmq::dec_short_string $data bytes]
-		set data [string range $data $bytes end]
-
-		set rKey [::rmq::dec_short_string $data bytes]
-		set data [string range $data $bytes end]
-
-		set msgCount [::rmq::dec_ulong $data bytes]
-
-		# save the basic get data for passing to the user
-		# callback after the body frame is received
-		set methodData [dict create \
-			deliveryTag $dTag \
-			redelivered $redelivered \
-			exchange $eName \
-			routingKey $rKey \
-			messageCount $msgCount]
-		set lastBasicMethod get
-	}
-
-	method basicQos {prefetchCount {globalQos 0}} {
-		::rmq::debug "Basic.Qos"
-
-		# prefetchSize is always 0 for RabbitMQ as any other
-		# value is unsupported and will lead to a channel error
-		set prefetchSize [::rmq::enc_ulong 0]
-		set prefetchCount [::rmq::enc_ushort $prefetchCount]
-		set globalQos [::rmq::enc_byte $globalQos]
-
-		set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
-			$::rmq::BASIC_QOS \
-			${prefetchSize}${prefetchCount}${globalQos}]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
-
-	method basicNack {deliveryTag {nackFlags ""}} {
-		::rmq::debug "Basic.Nack"
-
-		set deliveryTag [::rmq::enc_ulong_long $deliveryTag]
-
-		# multiple, requeue
-		set flags 0
-		foreach nackFlag $nackFlags {
-			set flags [expr {$flags | $nackFlag}]
-		}
-		set flags [::rmq::enc_byte $flags]
-
-		set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
-			$::rmq::BASIC_NACK ${deliveryTag}${flags}]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
-
-	method basicNackReceived {data} {
-		set deliveryTag [::rmq::dec_ulong_long $data bytes]
-
-		# If the multiple field is 1, and the delivery tag is zero,
-		# this indicates rejection of all outstanding messages.
-		set multiple [::rmq::dec_byte [string range $data $bytes end] _]
-		::rmq::debug "Basic.Nack received for $deliveryTag with multiple ($multiple)"
-
-		# there is also a requeue bit in the data but the spec says
-		# "Clients receiving the Nack methods should ignore this flag."
-
-		my callback basicNack $deliveryTag $multiple
-	}
-
-	method basicQosOk {data} {
-		::rmq::debug "Basic.QosOk"
-
-		# no parameters included
-		my callback basicQosOk
-	}
-
-	method basicPublish {data eName rKey {pFlags ""} {props ""}} {
-		::rmq::debug "Basic.Publish to exchange $eName w/ routing key $rKey"
-
-		set reserved [::rmq::enc_short 0]
-		set eName [::rmq::enc_short_string $eName]
-		set rKey [::rmq::enc_short_string $rKey]
-
-		# mandatory, immediate
-		set flags 0
-		foreach pFlag $pFlags {
-			set flags [expr {$flags | $pFlag}]
-		}
-		set flags [::rmq::enc_byte $flags]
-
-		set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
-			$::rmq::BASIC_PUBLISH \
-			${reserved}${eName}${rKey}${flags}]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-
-		# after sending the basic publish method, now need to send the data
-		# this requires sending a content header and then a content body
-		set bodyLen [string length $data]
-		set header [::rmq::enc_content_header $::rmq::BASIC_CLASS $bodyLen $props]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_HEADER $num $header]
-
-		# might need to break content up into several frames
-		set maxPayload [expr {[$connection getFrameMax] - 8}]
-		set bytesSent 0
-		while {$bytesSent < $bodyLen} {
-			set payload [string range $data $bytesSent [expr {$bytesSent + $maxPayload - 1}]]
-			$connection send [::rmq::enc_frame $::rmq::FRAME_BODY $num $payload]
-			incr bytesSent $maxPayload
-		}
-	}
-
-	method basicRecover {reQueue} {
-		::rmq::debug "Basic.Recover"
-		set reQueue [::rmq::enc_byte $reQueue]
-
-		set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
-			$::rmq::BASIC_RECOVER ${reQueue}]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
-
-	method basicRecoverAsync {reQueue} {
-		::rmq::debug "Basic.RecoverAsync (deprecated by Reject/Reject-Ok)"
-
-		set reQueue [::rmq::enc_byte $reQueue]
-
-		set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
-			$::rmq::BASIC_RECOVER_ASYNC ${reQueue}]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
-
-	method basicRecoverOk {data} {
-		::rmq::debug "Basic.RecoverOk"
-
-		# no parameters
-		my callback basicRecoverOk
-	}
-
-	method basicReject {deliveryTag {reQueue 0}} {
-		::rmq::debug "Basic.Reject"
-
-		set deliveryTag [::rmq::enc_ulong_long $deliveryTag]
-		set reQueue [::rmq::enc_byte $reQueue]
-
-		set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
-			$::rmq::BASIC_REJECT ${deliveryTag}${reQueue}]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
-
-	method basicReturn {data} {
-		::rmq::debug "Basic.Return"
-
-		set replyCode [::rmq::dec_short $data bytes]
-		set data [string range $data $bytes end]
-
-		set replyText [::rmq::dec_short_string $data bytes]
-		set data [string range $data $bytes end]
-
-		set exchange [::rmq::dec_short_string $data bytes]
-		set data [string range $data $bytes end]
-
-		set routingKey [::rmq::dec_short_string $data bytes]
-
-		set methodData [dict create \
-			replyCode $replyCode \
-			replyText $replyText \
-			exchange $exchange \
-			routingKey $routingKey]
-		set lastBasicMethod return
-	}
+    method basicGetEmpty {data} {
+        ::rmq::debug "Basic.GetEmpty"
+
+        # only have a single reserved parameter
+
+        # save an empty method data dict for this case
+        set methodData [dict create]
+        set lastBasicMethod get
+    }
+
+    method basicGetOk {data} {
+        ::rmq::debug "Basic.GetOk"
+
+        set dTag [::rmq::dec_ulong_long $data bytes]
+        set data [string range $data $bytes end]
+
+        set redelivered [::rmq::dec_byte $data bytes]
+        set data [string range $data $bytes end]
+
+        set eName [::rmq::dec_short_string $data bytes]
+        set data [string range $data $bytes end]
+
+        set rKey [::rmq::dec_short_string $data bytes]
+        set data [string range $data $bytes end]
+
+        set msgCount [::rmq::dec_ulong $data bytes]
+
+        # save the basic get data for passing to the user
+        # callback after the body frame is received
+        set methodData [dict create \
+            deliveryTag $dTag \
+            redelivered $redelivered \
+            exchange $eName \
+            routingKey $rKey \
+            messageCount $msgCount]
+        set lastBasicMethod get
+    }
+
+    method basicQos {prefetchCount {globalQos 0}} {
+        ::rmq::debug "Basic.Qos"
+
+        # prefetchSize is always 0 for RabbitMQ as any other
+        # value is unsupported and will lead to a channel error
+        set prefetchSize [::rmq::enc_ulong 0]
+        set prefetchCount [::rmq::enc_ushort $prefetchCount]
+        set globalQos [::rmq::enc_byte $globalQos]
+
+        set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
+            $::rmq::BASIC_QOS \
+            ${prefetchSize}${prefetchCount}${globalQos}]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
+
+    method basicNack {deliveryTag {nackFlags ""}} {
+        ::rmq::debug "Basic.Nack"
+
+        set deliveryTag [::rmq::enc_ulong_long $deliveryTag]
+
+        # multiple, requeue
+        set flags 0
+        foreach nackFlag $nackFlags {
+            set flags [expr {$flags | $nackFlag}]
+        }
+        set flags [::rmq::enc_byte $flags]
+
+        set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
+            $::rmq::BASIC_NACK ${deliveryTag}${flags}]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
+
+    method basicNackReceived {data} {
+        set deliveryTag [::rmq::dec_ulong_long $data bytes]
+
+        # If the multiple field is 1, and the delivery tag is zero,
+        # this indicates rejection of all outstanding messages.
+        set multiple [::rmq::dec_byte [string range $data $bytes end] _]
+        ::rmq::debug "Basic.Nack received for $deliveryTag with multiple ($multiple)"
+
+        # there is also a requeue bit in the data but the spec says
+        # "Clients receiving the Nack methods should ignore this flag."
+
+        my callback basicNack $deliveryTag $multiple
+    }
+
+    method basicQosOk {data} {
+        ::rmq::debug "Basic.QosOk"
+
+        # no parameters included
+        my callback basicQosOk
+    }
+
+    method basicPublish {data eName rKey {pFlags ""} {props ""}} {
+        ::rmq::debug "Basic.Publish to exchange $eName w/ routing key $rKey"
+
+        set reserved [::rmq::enc_short 0]
+        set eName [::rmq::enc_short_string $eName]
+        set rKey [::rmq::enc_short_string $rKey]
+
+        # mandatory, immediate
+        set flags 0
+        foreach pFlag $pFlags {
+            set flags [expr {$flags | $pFlag}]
+        }
+        set flags [::rmq::enc_byte $flags]
+
+        set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
+            $::rmq::BASIC_PUBLISH \
+            ${reserved}${eName}${rKey}${flags}]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+
+        # after sending the basic publish method, now need to send the data
+        # this requires sending a content header and then a content body
+        set bodyLen [string length $data]
+        set header [::rmq::enc_content_header $::rmq::BASIC_CLASS $bodyLen $props]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_HEADER $num $header]
+
+        # might need to break content up into several frames
+        set maxPayload [expr {[$connection getFrameMax] - 8}]
+        set bytesSent 0
+        while {$bytesSent < $bodyLen} {
+            set payload [string range $data $bytesSent [expr {$bytesSent + $maxPayload - 1}]]
+            $connection send [::rmq::enc_frame $::rmq::FRAME_BODY $num $payload]
+            incr bytesSent $maxPayload
+        }
+    }
+
+    method basicRecover {reQueue} {
+        ::rmq::debug "Basic.Recover"
+        set reQueue [::rmq::enc_byte $reQueue]
+
+        set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
+            $::rmq::BASIC_RECOVER ${reQueue}]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
+
+    method basicRecoverAsync {reQueue} {
+        ::rmq::debug "Basic.RecoverAsync (deprecated by Reject/Reject-Ok)"
+
+        set reQueue [::rmq::enc_byte $reQueue]
+
+        set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
+            $::rmq::BASIC_RECOVER_ASYNC ${reQueue}]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
+
+    method basicRecoverOk {data} {
+        ::rmq::debug "Basic.RecoverOk"
+
+        # no parameters
+        my callback basicRecoverOk
+    }
+
+    method basicReject {deliveryTag {reQueue 0}} {
+        ::rmq::debug "Basic.Reject"
+
+        set deliveryTag [::rmq::enc_ulong_long $deliveryTag]
+        set reQueue [::rmq::enc_byte $reQueue]
+
+        set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
+            $::rmq::BASIC_REJECT ${deliveryTag}${reQueue}]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
+
+    method basicReturn {data} {
+        ::rmq::debug "Basic.Return"
+
+        set replyCode [::rmq::dec_short $data bytes]
+        set data [string range $data $bytes end]
+
+        set replyText [::rmq::dec_short_string $data bytes]
+        set data [string range $data $bytes end]
+
+        set exchange [::rmq::dec_short_string $data bytes]
+        set data [string range $data $bytes end]
+
+        set routingKey [::rmq::dec_short_string $data bytes]
+
+        set methodData [dict create \
+            replyCode $replyCode \
+            replyText $replyText \
+            exchange $exchange \
+            routingKey $routingKey]
+        set lastBasicMethod return
+    }
 }
 
 ##
@@ -1024,21 +1024,21 @@ oo::define ::rmq::Channel {
 ##
 ##
 oo::define ::rmq::Channel {
-	method confirmSelect {{noWait 0}} {
-		::rmq::debug "Confirm.Select"
+    method confirmSelect {{noWait 0}} {
+        ::rmq::debug "Confirm.Select"
 
-		set noWait [::rmq::enc_byte $noWait]
-		set methodLayer [::rmq::enc_method $::rmq::CONFIRM_CLASS \
-			$::rmq::CONFIRM_SELECT $noWait]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
-	}
+        set noWait [::rmq::enc_byte $noWait]
+        set methodLayer [::rmq::enc_method $::rmq::CONFIRM_CLASS \
+            $::rmq::CONFIRM_SELECT $noWait]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD $num $methodLayer]
+    }
 
-	method confirmSelectOk {data} {
-		::rmq::debug "Confirm.SelectOk (now in confirm mode)"
-		set confirmMode 1
+    method confirmSelectOk {data} {
+        ::rmq::debug "Confirm.SelectOk (now in confirm mode)"
+        set confirmMode 1
 
-		my callback confirmSelectOk
-	}
+        my callback confirmSelectOk
+    }
 }
 
 ##
@@ -1047,56 +1047,56 @@ oo::define ::rmq::Channel {
 ##
 ##
 oo::define ::rmq::Channel {
-	method txSelect {} {
-		::rmq::debug "Tx.Select"
+    method txSelect {} {
+        ::rmq::debug "Tx.Select"
 
-		# no parameters for this method
-		set methodLayer [::rmq::enc_method $::rmq::TX_CLASS \
-			$::rmq::TX_SELECT ""]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD \
-			$num $methodLayer]
-	}
+        # no parameters for this method
+        set methodLayer [::rmq::enc_method $::rmq::TX_CLASS \
+            $::rmq::TX_SELECT ""]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD \
+            $num $methodLayer]
+    }
 
-	method txSelectOk {data} {
-		::rmq::debug "Tx.SelectOk"
+    method txSelectOk {data} {
+        ::rmq::debug "Tx.SelectOk"
 
-		# no parameters
-		my callback txSelectOk
-	}
+        # no parameters
+        my callback txSelectOk
+    }
 
-	method txCommit {} {
-		::rmq::debug "Tx.Commit"
+    method txCommit {} {
+        ::rmq::debug "Tx.Commit"
 
-		# no parameters
-		set methodLayer [::rmq::enc_method $::rmq::TX_CLASS \
-			$::rmq::TX_COMMIT ""]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD \
-			$num $methodLayer]
-	}
+        # no parameters
+        set methodLayer [::rmq::enc_method $::rmq::TX_CLASS \
+            $::rmq::TX_COMMIT ""]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD \
+            $num $methodLayer]
+    }
 
-	method txCommitOk {data} {
-		::rmq::debug "Tx.CommitOk"
+    method txCommitOk {data} {
+        ::rmq::debug "Tx.CommitOk"
 
-		# no parameters
-		my callback txCommitOk
-	}
+        # no parameters
+        my callback txCommitOk
+    }
 
-	method txRollback {} {
-		::rmq::debug "Tx.Rollback"
+    method txRollback {} {
+        ::rmq::debug "Tx.Rollback"
 
-		# no parameters
-		set methodLayer [::rmq::enc_method $::rmq::TX_CLASS \
-			$::rmq::TX_ROLLBACK ""]
-		$connection send [::rmq::enc_frame $::rmq::FRAME_METHOD \
-			$num $methodLayer]
-	}
+        # no parameters
+        set methodLayer [::rmq::enc_method $::rmq::TX_CLASS \
+            $::rmq::TX_ROLLBACK ""]
+        $connection send [::rmq::enc_frame $::rmq::FRAME_METHOD \
+            $num $methodLayer]
+    }
 
-	method txRollbackOk {data} {
-		::rmq::debug "Tx.RollbackOk"
+    method txRollbackOk {data} {
+        ::rmq::debug "Tx.RollbackOk"
 
-		# no parameters
-		my callback txRollbackOk
-	}
+        # no parameters
+        my callback txRollbackOk
+    }
 }
 
 # vim: ts=4:sw=4:sts=4:noet

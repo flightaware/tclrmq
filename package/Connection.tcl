@@ -1,4 +1,4 @@
-package provide rmq 1.3.7
+package provide rmq 1.3.8
 
 package require TclOO
 package require tls
