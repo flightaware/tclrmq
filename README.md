@@ -99,8 +99,9 @@ Connection objects allow for the setting of the following callbacks:
                 is blocked or not and a textual reason
 
 3) _onClosed_: called when the connection is closed and is passed the _Connection_ object
-               and a dict containing any data such as a textual description of the error,
-               the reply code, any reply text, the class ID and the method ID
+               and a dict containing the reply code, any reply text, the class ID and the method ID.
+               The corresponding dictionary keys are `replyCode`, `replyText`, `classID` and
+               `methodID` respectively.  An alias method _onClose_ is also provided.
 
 3) _onError_: called when an error code has been sent to the _Connection_ and is passed
               the error code and any accompanying data in the frame
@@ -149,8 +150,8 @@ objects.  They are:
              the _onConnected_ callback for Connection objects
 
 2) _onClose_: called when the channel has been fully closed, i.e., when the Channel.Close-Ok
-              method is received from the RabbitMQ server and is passed the same arguments as
-              the _onClosed_ callback for Connection objects
+              method is received from the RabbitMQ server and is passed the _Channel_ object
+              and the same dictionary passed to the _onClosed_ callback for _Connection_ objects
 
 3) _onError_: called when the channel receives an error, i.e., a frame is received for the
               given channel but contains an AMQP error code and is passed the same arguments as
@@ -363,7 +364,8 @@ Takes no arguments.  Using the _-maxBackoff_ and _-maxReconnects_ constructor ar
 
 ### closeConnection
 
-Takes an optional boolean argument controlling whether the _onClose_ callback is invoked (defaults to true).  Closes the connection and, if specified, calls any callback set with _onClose_.
+Takes an optional boolean argument controlling whether the _onClose_ callback is invoked (defaults to true).  Closes the connection and, if specified, calls any callback set with _onClose_.  This is not meant to 
+be called externally as it does not uses the AMQP protocol for closing the channel.  Instead, _connectionClose_ should be used in client applications.
 
 ### connect
 
@@ -390,7 +392,7 @@ blocked), and a textual reason why.
 
 Takes the name of a callback proc which will be called when the connection is closed.  This includes a failed connection to the RabbitMQ server when
 first calling _connect_ and a disconnection after establishing communication with the RabbitMQ server.  The callback takes the _Connection_
-object and a dictionary of data specified in the section above about callbacks.
+object and a dictionary with the keys specified in the documentation to the _onClosed_ callback.
 
 ### onClosed
 
@@ -485,28 +487,8 @@ Takes no arguments and returns 1 if the channel is active, i.e., it has been ope
 
 ### closeChannel
 
-Takes no arguments and closes the channel.  If an _onClose_ callback has been specified it is called with the _Channel_ object and 
-a dictionary containing the following keys and values (all keys will be included even if their value is empty):
-
-* __data__
-
-    Any data sent back from the server when closing.  Usually empty.
-
-* __replyCode__
-
-    The numeric reply code sent from the server.
-
-* __replyText__
-
-    Textual description of the reply code.  Useful for troubleshooting purposes.
-
-* __classID__
-
-    Numeric class ID for the class responsible for the closing if appropriate.
-
-* __methodID__
-
-    Numeric method ID for the method responsible for the closing if appropriate.
+Not meant to be called externally.  Instead, this method is used internally by the library to properly set the _Channel_ object's state before
+and after calling the _onClose_ callback.
 
 ### closeConnection
 
@@ -535,7 +517,7 @@ Takes an AMQP method name in camel case, starting with a lower case letter and t
 ### onClose
 
 Takes the name of a callback proc to be called when the channel is closed.  The callback takes the _Channel_ object and a dictionary
-of data, which is specified in the README section about callbacks and in the _closeChannel_ method description above.
+of data, which is specified in the section about _onClose_ callbacks.
 
 ### onClosed
 
@@ -583,10 +565,6 @@ The following methods are defined on _Channel_ objects and implement the methods
 
 Takes the following arguments:
 
-* __data__
-
-    String of data potentially transferred during closing.
-
 * __replyCode__
 
     Numeric reply code for closing the channel as specified in the AMQP specification.
@@ -604,7 +582,7 @@ Takes the following arguments:
     AMQP method ID number.
 
 To place a callback for the closing of a channel, use the _onClose_ or _onClosed_ method.  The callback takes the _Channel_ object
-and a dictionary of data describing the reason for the closing.
+and a dictionary of data with key names matching the arguments listed above.
 
 #### channelOpen
 
