@@ -119,7 +119,6 @@ oo::class create ::rmq::Channel {
     }
 
     method contentBody {data} {
-        ::rmq::debug "Channel $num processing a content body frame"
 
         # add the current blob of data to the receivedData variable
         append receivedData $data
@@ -129,14 +128,11 @@ oo::class create ::rmq::Channel {
         # appropriate error code
         if {![dict exists $frameData bodySize]} {
             # Error code 406 means a precondition failed
-            ::rmq::debug "Frame data dict does not contain expected bodySize variable"
             return [$connection send [::rmq::enc_frame 406 0 ""]]
         } else {
-            ::rmq::debug "Expecting [dict get $frameData bodySize] bytes of data"
         }
 
         if {[string length $receivedData] == [dict get $frameData bodySize]} {
-            ::rmq::debug "Received all the data for the content, invoking necessary callback"
 
             # reset all variables used to keep track of consumed data
             set consumerCBArgs [list $methodData $frameData $receivedData]
@@ -151,27 +147,22 @@ oo::class create ::rmq::Channel {
                 if {[info exists consumerCBs($cTag)]} {
                     after idle [list after 0 [list {*}$consumerCBs($cTag) [self] {*}$consumerCBArgs]]
                 } else {
-                    ::rmq::debug "Delivered message for consumer tag $cTag, but no callback set"
                 }
             } elseif {$lastBasicMethod eq "get"} {
                 after idle [list after 0 [list my callback basicDeliver {*}$consumerCBArgs]]
             } elseif {$lastBasicMethod eq "return"} {
                 after idle [list after 0 [list my callback basicReturn {*}$consumerCBArgs]]
             } else {
-                ::rmq::debug "Received enqueued data ($consumerCBArgs) but no callback set"
             }
         } else {
-            ::rmq::debug "Received [string length $receivedData] bytes so far"
         }
     }
 
     method contentHeader {headerD} {
-        ::rmq::debug "Channel $num processing a content header frame: $headerD"
         set frameData $headerD
     }
 
     method errorHandler {errorCode data} {
-        ::rmq::debug "Channel error handler with code $errorCode and data $data"
 
         if {$errorCB ne ""} {
             {*}$errorCB [self] $errorCode $data
@@ -269,7 +260,6 @@ oo::class create ::rmq::Channel {
 ##
 oo::define ::rmq::Channel {
     method channelClose {{data ""} {replyCode 200} {replyText "Normal"} {cID 0} {mID 0}} {
-        ::rmq::debug "Channel.Close"
         set closing 1
 
         # need to send a Channel.Close frame
@@ -290,30 +280,25 @@ oo::define ::rmq::Channel {
         dict set closeD classID [::rmq::dec_short $data _]
         dict set closeD methodID [::rmq::dec_short [string range $data 2 end] _]
 
-        ::rmq::debug "Channel.CloseOk \[$num\] ($closeD)"
 
         # send Connection.Close-Ok
         my sendChannelCloseOk
     }
 
     method channelCloseOk {data} {
-        ::rmq::debug "Channel.CloseOk"
         my closeChannel
     }
 
     method channelFlow {data} {
-        ::rmq::debug "Channel.Flow"
         set active [::rmq::dec_byte $data _]
         my sendChannelFlowOk
     }
 
     method channelFlowOk {data} {
         set active [::rmq::dec_byte $data _]
-        ::rmq::debug "Channel.FlowOk (active $active)"
     }
 
     method channelOpen {} {
-        ::rmq::debug "Channel.Open channel $num"
 
         set payload [::rmq::enc_short_string ""]
         set payload [::rmq::enc_method $::rmq::CHANNEL_CLASS $::rmq::CHANNEL_OPEN $payload]
@@ -321,7 +306,6 @@ oo::define ::rmq::Channel {
     }
 
     method channelOpenOk {data} {
-        ::rmq::debug "Channel.OpenOk channel $num"
         set opened 1
         set active 1
 
@@ -337,7 +321,6 @@ oo::define ::rmq::Channel {
     }
 
     method sendChannelFlow {flowActive} {
-        ::rmq::debug "Sending Channel.Flow (active $flowActive)"
 
         set payload [::rmq::enc_byte $flowActive]
         set payload [::rmq::enc_method $::rmq::CHANNEL_CLASS $::rmq::CHANNEL_FLOW $payload]
@@ -345,7 +328,6 @@ oo::define ::rmq::Channel {
     }
 
     method sendChannelFlowOk {} {
-        ::rmq::debug "Sending Channel.FlowOk (active $active)"
 
         set payload [::rmq::enc_byte $active]
         set payload [::rmq::enc_method $::rmq::CHANNEL_CLASS $::rmq::CHANNEL_FLOW $payload]
@@ -360,7 +342,6 @@ oo::define ::rmq::Channel {
 ##
 oo::define ::rmq::Channel {
     method exchangeBind {dst src rKey {noWait 0} {eArgs ""}} {
-        ::rmq::debug "Channel $num Exchange.Bind"
 
         # there's a reserved short field
         set reserved [::rmq::enc_short 0]
@@ -388,14 +369,12 @@ oo::define ::rmq::Channel {
     }
 
     method exchangeBindOk {data} {
-        ::rmq::debug "Channel $num Exchange.BindOk"
 
         # nothing really passed into this method
         my callback exchangeBindOk
     }
 
     method exchangeDeclare {eName eType {eFlags ""} {eArgs ""}} {
-        ::rmq::debug "Channel $num Exchange.Declare"
 
         # there's a reserved short field
         set reserved [::rmq::enc_short 0]
@@ -426,13 +405,11 @@ oo::define ::rmq::Channel {
     # set a callback with the name exchangeDeclareOk
     #
     method exchangeDeclareOk {data} {
-        ::rmq::debug "Channel $num Exchange.DeclareOk"
 
         my callback exchangeDeclareOk
     }
 
     method exchangeDelete {eName {inUse 0} {noWait 0}} {
-        ::rmq::debug "Channel $num Exchange.Delete"
 
         # reserved short field
         set reserved [::rmq::enc_short 0]
@@ -462,13 +439,11 @@ oo::define ::rmq::Channel {
     # set a callback with the name exchangeDeleteOk
     #
     method exchangeDeleteOk {data} {
-        ::rmq::debug "Channel $num Exchange.DeleteOk"
 
         my callback exchangeDeleteOk
     }
 
     method exchangeUnbind {dst src rKey {noWait 0} {eArgs ""}} {
-        ::rmq::debug "Channel $num Exchange.Unbind"
         # there's a reserved short field
         set reserved [::rmq::enc_short 0]
 
@@ -495,7 +470,6 @@ oo::define ::rmq::Channel {
     }
 
     method exchangeUnbindOk {data} {
-        ::rmq::debug "Channel $num Exchange.UnbindOk"
 
         # nothing really passed into this method
         my callback exchangeUnbindOk ""
@@ -509,7 +483,6 @@ oo::define ::rmq::Channel {
 ##
 oo::define ::rmq::Channel {
     method queueBind {qName eName {rKey ""} {noWait 0} {qArgs ""}} {
-        ::rmq::debug "Queue.Bind"
 
         # deprecated short ticket field set to 0
         set ticket [::rmq::enc_short 0]
@@ -540,14 +513,12 @@ oo::define ::rmq::Channel {
     # set a callback with the name queueBindOk
     #
     method queueBindOk {data} {
-        ::rmq::debug "Queue.BindOk"
 
         # No parameters included
         my callback queueBindOk
     }
 
     method queueDeclare {qName {qFlags ""} {qArgs ""}} {
-        ::rmq::debug "Queue.Declare"
 
         # a short reserved field
         set reserved [::rmq::enc_short 0]
@@ -585,13 +556,11 @@ oo::define ::rmq::Channel {
 
         set consumers [::rmq::dec_ulong $data bytes]
 
-        ::rmq::debug "Queue.DeclareOk (name $qName) (msgs $msgCount) (consumers $consumers)"
 
         my callback queueDeclareOk $qName $msgCount $consumers
     }
 
     method queueDelete {qName {flags ""}} {
-        ::rmq::debug "Queue.Delete"
 
         set reserved [::rmq::enc_short 0]
 
@@ -613,7 +582,6 @@ oo::define ::rmq::Channel {
     # set a callback with the name queueDeleteOk
     #
     method queueDeleteOk {data} {
-        ::rmq::debug "Queue.DeleteOk"
 
         set msgCount [::rmq::dec_ulong $data _]
 
@@ -621,7 +589,6 @@ oo::define ::rmq::Channel {
     }
 
     method queuePurge {qName {noWait 0}} {
-        ::rmq::debug "Queue.Purge"
 
         # reserved short field
         set reserved [::rmq::enc_short 0]
@@ -642,7 +609,6 @@ oo::define ::rmq::Channel {
     # set a callback with the name queuePurgeOk
     #
     method queuePurgeOk {data} {
-        ::rmq::debug "Queue.PurgeOk"
 
         set msgCount [::rmq::dec_ulong $data _]
 
@@ -650,7 +616,6 @@ oo::define ::rmq::Channel {
     }
 
     method queueUnbind {qName eName rKey {qArgs ""}} {
-        ::rmq::debug "Queue.Unbind"
 
         # reserved short field
         set reserved [::rmq::enc_short 0]
@@ -678,7 +643,6 @@ oo::define ::rmq::Channel {
     # set a callback with the name queueUnbindOk
     #
     method queueUnbindOk {data} {
-        ::rmq::debug "Queue.UnbindOk"
 
         # No parameters included
         my callback queueUnbindOk
@@ -700,7 +664,6 @@ oo::define ::rmq::Channel {
     variable consumerCBArgs
 
     method basicAck {deliveryTag {multiple 0}} {
-        ::rmq::debug "Basic.Ack"
 
         set deliveryTag [::rmq::enc_ulong_long $deliveryTag]
         set multiple [::rmq::enc_byte $multiple]
@@ -714,12 +677,10 @@ oo::define ::rmq::Channel {
         set deliveryTag [::rmq::dec_ulong_long $data bytes]
         set multiple [::rmq::dec_byte [string range $data $bytes end] _]
 
-        ::rmq::debug "Basic.Ack received for $deliveryTag with multiple ($multiple)"
         my callback basicAck $deliveryTag $multiple
     }
 
     method basicConsume {callback qName {cTag ""} {cFlags ""} {cArgs ""}} {
-        ::rmq::debug "Basic.Consume"
 
         # setup for the callback
         my setCallback basicDeliver $callback
@@ -746,11 +707,9 @@ oo::define ::rmq::Channel {
 
     method basicConsumeOk {data} {
         set cTag [::rmq::dec_short_string $data _]
-        ::rmq::debug "Basic.ConsumeOk (consumer tag: $cTag)"
 
         # if just learned the consumer tag, update callbacks array
         if {[info exists consumerCBs()]} {
-            ::rmq::debug "Have server generated consumer tag, unsetting empty callback key"
             set consumerCBs($cTag) $consumerCBs()
             unset consumerCBs()
         }
@@ -759,7 +718,6 @@ oo::define ::rmq::Channel {
     }
 
     method basicCancel {cTag {noWait 0}} {
-        ::rmq::debug "Basic.Cancel"
 
         set cTag [::rmq::enc_short_string $cTag]
         set noWait [::rmq::enc_byte $noWait]
@@ -771,7 +729,6 @@ oo::define ::rmq::Channel {
     }
 
     method basicCancelOk {data} {
-        ::rmq::debug "Basic.CancelOk"
 
         set cTag [::rmq::dec_short_string $data _]
 
@@ -781,7 +738,6 @@ oo::define ::rmq::Channel {
     method basicCancelRecv {data} {
         set cTag [::rmq::dec_short_string $data _]
 
-        ::rmq::debug "Basic.Cancel received for consumer tag $cTag"
 
         array unset consumerCBs $cTag
 
@@ -789,7 +745,6 @@ oo::define ::rmq::Channel {
     }
 
     method basicDeliver {data} {
-        ::rmq::debug "Basic.Deliver"
 
         set cTag [::rmq::dec_short_string $data bytes]
         set data [string range $data $bytes end]
@@ -817,7 +772,6 @@ oo::define ::rmq::Channel {
     }
 
     method basicGet {callback qName {noAck 1}} {
-        ::rmq::debug "Basic.Get"
 
         my setCallback basicDeliver $callback
         set lastBasicMethod get
@@ -833,7 +787,6 @@ oo::define ::rmq::Channel {
     }
 
     method basicGetEmpty {data} {
-        ::rmq::debug "Basic.GetEmpty"
 
         # only have a single reserved parameter
 
@@ -843,7 +796,6 @@ oo::define ::rmq::Channel {
     }
 
     method basicGetOk {data} {
-        ::rmq::debug "Basic.GetOk"
 
         set dTag [::rmq::dec_ulong_long $data bytes]
         set data [string range $data $bytes end]
@@ -871,7 +823,6 @@ oo::define ::rmq::Channel {
     }
 
     method basicQos {prefetchCount {globalQos 0}} {
-        ::rmq::debug "Basic.Qos"
 
         # prefetchSize is always 0 for RabbitMQ as any other
         # value is unsupported and will lead to a channel error
@@ -886,7 +837,6 @@ oo::define ::rmq::Channel {
     }
 
     method basicNack {deliveryTag {nackFlags ""}} {
-        ::rmq::debug "Basic.Nack"
 
         set deliveryTag [::rmq::enc_ulong_long $deliveryTag]
 
@@ -908,7 +858,6 @@ oo::define ::rmq::Channel {
         # If the multiple field is 1, and the delivery tag is zero,
         # this indicates rejection of all outstanding messages.
         set multiple [::rmq::dec_byte [string range $data $bytes end] _]
-        ::rmq::debug "Basic.Nack received for $deliveryTag with multiple ($multiple)"
 
         # there is also a requeue bit in the data but the spec says
         # "Clients receiving the Nack methods should ignore this flag."
@@ -917,14 +866,12 @@ oo::define ::rmq::Channel {
     }
 
     method basicQosOk {data} {
-        ::rmq::debug "Basic.QosOk"
 
         # no parameters included
         my callback basicQosOk
     }
 
     method basicPublish {data eName rKey {pFlags ""} {props ""}} {
-        ::rmq::debug "Basic.Publish to exchange $eName w/ routing key $rKey"
 
         set reserved [::rmq::enc_short 0]
         set eName [::rmq::enc_short_string $eName]
@@ -959,7 +906,6 @@ oo::define ::rmq::Channel {
     }
 
     method basicRecover {reQueue} {
-        ::rmq::debug "Basic.Recover"
         set reQueue [::rmq::enc_byte $reQueue]
 
         set methodLayer [::rmq::enc_method $::rmq::BASIC_CLASS \
@@ -968,7 +914,6 @@ oo::define ::rmq::Channel {
     }
 
     method basicRecoverAsync {reQueue} {
-        ::rmq::debug "Basic.RecoverAsync (deprecated by Reject/Reject-Ok)"
 
         set reQueue [::rmq::enc_byte $reQueue]
 
@@ -978,14 +923,12 @@ oo::define ::rmq::Channel {
     }
 
     method basicRecoverOk {data} {
-        ::rmq::debug "Basic.RecoverOk"
 
         # no parameters
         my callback basicRecoverOk
     }
 
     method basicReject {deliveryTag {reQueue 0}} {
-        ::rmq::debug "Basic.Reject"
 
         set deliveryTag [::rmq::enc_ulong_long $deliveryTag]
         set reQueue [::rmq::enc_byte $reQueue]
@@ -996,7 +939,6 @@ oo::define ::rmq::Channel {
     }
 
     method basicReturn {data} {
-        ::rmq::debug "Basic.Return"
 
         set replyCode [::rmq::dec_short $data bytes]
         set data [string range $data $bytes end]
@@ -1025,7 +967,6 @@ oo::define ::rmq::Channel {
 ##
 oo::define ::rmq::Channel {
     method confirmSelect {{noWait 0}} {
-        ::rmq::debug "Confirm.Select"
 
         set noWait [::rmq::enc_byte $noWait]
         set methodLayer [::rmq::enc_method $::rmq::CONFIRM_CLASS \
@@ -1034,7 +975,6 @@ oo::define ::rmq::Channel {
     }
 
     method confirmSelectOk {data} {
-        ::rmq::debug "Confirm.SelectOk (now in confirm mode)"
         set confirmMode 1
 
         my callback confirmSelectOk
@@ -1048,7 +988,6 @@ oo::define ::rmq::Channel {
 ##
 oo::define ::rmq::Channel {
     method txSelect {} {
-        ::rmq::debug "Tx.Select"
 
         # no parameters for this method
         set methodLayer [::rmq::enc_method $::rmq::TX_CLASS \
@@ -1058,14 +997,12 @@ oo::define ::rmq::Channel {
     }
 
     method txSelectOk {data} {
-        ::rmq::debug "Tx.SelectOk"
 
         # no parameters
         my callback txSelectOk
     }
 
     method txCommit {} {
-        ::rmq::debug "Tx.Commit"
 
         # no parameters
         set methodLayer [::rmq::enc_method $::rmq::TX_CLASS \
@@ -1075,14 +1012,12 @@ oo::define ::rmq::Channel {
     }
 
     method txCommitOk {data} {
-        ::rmq::debug "Tx.CommitOk"
 
         # no parameters
         my callback txCommitOk
     }
 
     method txRollback {} {
-        ::rmq::debug "Tx.Rollback"
 
         # no parameters
         set methodLayer [::rmq::enc_method $::rmq::TX_CLASS \
@@ -1092,7 +1027,6 @@ oo::define ::rmq::Channel {
     }
 
     method txRollbackOk {data} {
-        ::rmq::debug "Tx.RollbackOk"
 
         # no parameters
         my callback txRollbackOk

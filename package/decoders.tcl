@@ -12,7 +12,6 @@ namespace eval rmq {
         # field-value-pair: field-name field-value
         # field-name: short-string
         binary scan $data Iu len
-        ::rmq::debug "Field table is $len bytes"
         set data [string range $data 4 end]
 
         set bytesProcessed 4
@@ -354,7 +353,6 @@ namespace eval rmq {
     }
 
     proc dec_content_header {data} {
-        ::rmq::debug "Decode content header"
 
         # the class ID field
         set cID [::rmq::dec_short $data _]
@@ -371,7 +369,6 @@ namespace eval rmq {
         # body size for the content body frames to come
         set data [string range $data 2 end]
         set bodySize [::rmq::dec_ulong_long $data bytes]
-        ::rmq::debug "Content header class ID $cID with a body size of $bodySize"
 
         # lastly, parse the property flags field
         set data [string range $data $bytes end]
@@ -381,7 +378,6 @@ namespace eval rmq {
         # so combine them all together
         set propFlags $flags
         while {$flags & (1 << 0)} {
-            ::rmq::debug "More than the typical number of property flags!"
             set data [string range $data 2 end]
             set flags [::rmq::dec_ushort $data _]
             #lappend propFlags $flags

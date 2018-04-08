@@ -6,13 +6,6 @@ package require tls
 namespace eval rmq {
     namespace export Connection
 
-    proc debug {msg} {
-        if {$::rmq::debug} {
-            set ts [clock format [clock seconds] -format "%D %T" -gmt 1]
-            puts stderr "\[DEBUG\] ($ts): $msg"
-        }
-    }
-
     # return random integer in [start, end]
     proc rand_int {start end} {
         set range [expr {$end - $start + 1}]
@@ -147,7 +140,6 @@ oo::class create ::rmq::Connection {
         }
 
         # whether we are in debug mode
-        set ::rmq::debug $debug
 
         # socket variable
         set sock ""
@@ -206,7 +198,6 @@ oo::class create ::rmq::Connection {
     # if auto reconnection is not desired this method can
     # be called in the closed callback or equivalent place
     method attemptReconnect {} {
-        ::rmq::debug "Attempting auto-reconnect with exponential backoff"
         set reconnecting 1
         if {$maxReconnects == 0 || $retries < $maxReconnects} {
             if {[my connect]} {
@@ -218,11 +209,9 @@ oo::class create ::rmq::Connection {
             set waitTime [expr {min($waitTime, $maxBackoff * 1000)}]
 
             incr retries
-            ::rmq::debug "After $waitTime msecs, attempting reconnect ($retries time(s))..."
 
             after $waitTime [list [self] attemptReconnect]
         } else {
-            ::rmq::debug "Unable to successfully reconnect, not attempting any more..."
             set reconnecting 0
             if {$failedReconnectCB ne ""} {
                 {*}$failedReconnectCB [self]
@@ -240,7 +229,6 @@ oo::class create ::rmq::Connection {
             set sockHealthPollingID \
                 [after $::rmq::CHECK_CONNECTION [list [self] checkConnection]]
         } on error {result options} {
-            ::rmq::debug "When testing EOF on socket: '$result'"
             my closeConnection
         }
     }
@@ -250,12 +238,10 @@ oo::class create ::rmq::Connection {
     # does not send any AMQP method: cleans up object state
     #
     method closeConnection {{callCloseCB 1}} {
-        ::rmq::debug "Closing connection"
         try {
             chan event $sock readable ""
             close $sock
         } on error {result options} {
-            ::rmq::debug "Close connection error: '$result'"
         }
 
         # reset all necessary variables
@@ -296,7 +282,6 @@ oo::class create ::rmq::Connection {
             if {!$tls} {
                 set sock [socket -async $host $port]
             } else {
-                ::rmq::debug "Making TLS connection with options: [array get tlsOpts]"
                 set sock [tls::socket {*}[concat [list -async $host $port] [array get tlsOpts]]]
             }
 
@@ -323,7 +308,6 @@ oo::class create ::rmq::Connection {
             # otherwise, unset the writable handler, cancel the timeout check
             # and move on with something useful
             if {$::rmq::connectTimeout && [chan configure $sock -connecting]} {
-                ::rmq::debug "Connection attempt timed out to $host:$port"
 
                 my closeConnection
                 if {$autoReconnect && !$reconnecting} {
@@ -331,7 +315,6 @@ oo::class create ::rmq::Connection {
                 }
                 return 0
             } elseif {[set sockErr [chan configure $sock -error]] ne ""} {
-                ::rmq::debug "Socket error during connection attempt: $sockErr"
                 my closeConnection
                 if {$autoReconnect && !$reconnecting} {
                     after idle [after 0 [list [self] attemptReconnect]]
@@ -351,7 +334,6 @@ oo::class create ::rmq::Connection {
 
             # send the protocol header
             my send [::rmq::enc_protocol_header]
-            ::rmq::debug "Sent protocol header"
 
             # return success once we receive connection.open-ok AMQP method
             set timeoutID [after [expr {$maxTimeout * 1000}] \
@@ -361,7 +343,6 @@ oo::class create ::rmq::Connection {
             return $connected
         } on error {result options} {
             # when using -async this is reached when a DNS lookup fails
-            ::rmq::debug "Error connecting to $host:$port '$result'"
             my closeConnection
             return 0
         }
@@ -452,14 +433,12 @@ oo::class create ::rmq::Connection {
     #
     method processFrame {data} {
         if {[string length $data] < 7} {
-            ::rmq::debug "Frame not even 7 bytes: saving partial frame"
             append partialFrame $data
             return 0
         }
 
         # read the header to figure out what we're dealing with
         binary scan $data cuSuIu ftype fchannel fsize
-        ::rmq::debug "Frame type: $ftype Channel: $fchannel Size: $fsize"
 
         # verify that the channel number makes sense
         if {$fchannel == 0} {
@@ -469,21 +448,17 @@ oo::class create ::rmq::Connection {
             set channelObj [dict get $channelsD $fchannel]
         } else {
             # Error code 505 is an unexpected frame error
-            ::rmq::debug "Channel number $fchannel does not exist"
             my send [::rmq::enc_frame 505 0 ""]
             return 0
         }
 
         # dispatch based on the frame type
         if {$ftype != $::rmq::FRAME_HEARTBEAT && $fsize == 0} {
-            ::rmq::debug "Non-heartbeat frame with a payload size of 0"
             return 1
         }
 
         # make sure the frame ends with the right character
         if {[string range $data end end] != $::rmq::FRAME_END} {
-            ::rmq::debug "Frame does not end with correct byte value: saving partial frame"
-            ::rmq::debug "Frame was [string length $data] bytes with claimed $fsize size on channel $fchannel"
 
             # partial frames are buffered here
             append partialFrame $data
@@ -512,7 +487,6 @@ oo::class create ::rmq::Connection {
             my processFrame $data
             return 1
         } on error {result options} {
-            ::rmq::debug "processFrame error: $result $options"
             return 0
         }
     }
@@ -520,7 +494,6 @@ oo::class create ::rmq::Connection {
     method processHeaderFrame {channelObj data} {
         # Reply code 504 is a channel error
         if {$channelObj eq ""} {
-            ::rmq::debug "\[ERROR\]: Channel is 0 for header frame"
             return [my send [::rmq::enc_frame 504 0 ""]]
         }
 
@@ -531,7 +504,6 @@ oo::class create ::rmq::Connection {
     method processHeartbeatFrame {channelObj data} {
         # Reply code 501 is a frame error when the channel is not 0
         if {$channelObj ne ""} {
-            ::rmq::debug "\[ERROR\]: Channel is not 0 for heartbeat"
             return [my send [::rmq::enc_frame 501 0 ""]]
         }
 
@@ -543,7 +515,6 @@ oo::class create ::rmq::Connection {
         # Need to know the class ID and method ID
         binary scan $data SuSu classID methodID
         set data [string range $data 4 end]
-        ::rmq::debug "class ID $classID method ID $methodID"
 
         # dispatch based on class ID
         if {$classID == $::rmq::CONNECTION_CLASS} {
@@ -558,7 +529,6 @@ oo::class create ::rmq::Connection {
     }
 
     method processUnknownFrame {ftype channelObj data} {
-        ::rmq::debug "Processing an unknown frame type $ftype"
 
         # check if the ftype is a known error code
         if {[dict exists $::rmq::ERROR_CODES $ftype]} {
@@ -578,7 +548,6 @@ oo::class create ::rmq::Connection {
 
     method processUnknownMethod {classID methodID data} {
         # Received an unsupported method
-        ::rmq::debug "Unsupported class ID $classID and method ID $methodID"
     }
 
     #
@@ -589,11 +558,9 @@ oo::class create ::rmq::Connection {
         try {
             set data [chan read $sock $frameMax]
             if {$data eq "" && [chan eof $sock]} {
-                ::rmq::debug "Reached EOF reading from socket"
                 return [my closeConnection]
             }
         } on error {result options} {
-            ::rmq::debug "Error reading from socket '$result'"
             return [my closeConnection]
         }
 
@@ -663,7 +630,6 @@ oo::class create ::rmq::Connection {
             puts -nonewline $sock $data
             set lastSend [clock seconds]
         } on error {result options} {
-            ::rmq::debug "Error sending to socket"
             my closeConnection
         }
     }
@@ -675,12 +641,10 @@ oo::class create ::rmq::Connection {
         set now [clock seconds]
         set sinceLastRead [expr {$now - $lastRead}]
         set sinceLastSend [expr {$now - $lastSend}]
-        ::rmq::debug "Heartbeat: $sinceLastRead secs since last read and $sinceLastSend secs since last send"
 
         # despite being able to send data on the socket, if we haven't heard anything
         # from the server for > 2 heartbeat intervals, we need to disconnect
         if {$sinceLastRead > 2 * $heartbeatSecs} {
-            ::rmq::debug "Been more than 2 heartbeat intervals without socket read activity, shutting down connection"
             return [my closeConnection]
         }
 
@@ -688,7 +652,6 @@ oo::class create ::rmq::Connection {
         # need to check if we'd be over the heartbeat interval at the end of the
         # after wait if we did not send a heartbeat right now
         if {max($sinceLastRead, $sinceLastSend) >= $heartbeatSecs >> 1} {
-            ::rmq::debug "Sending heartbeat frame: long enough since last send or last read"
             return [my send [::rmq::enc_frame $::rmq::FRAME_HEARTBEAT 0 ""]]
         }
 
@@ -713,7 +676,6 @@ oo::class create ::rmq::Connection {
         while {[string length $data] >= 7} {
             # need to get the frame size
             binary scan $data @3Iu fsize
-            ::rmq::debug "Split frames size $fsize"
 
             # 8 bytes of the frame is non-payload data
             # 1 byte for type, 2 bytes for channel, 4 bytes for size, 1 byte for frame end
@@ -722,11 +684,9 @@ oo::class create ::rmq::Connection {
         }
 
         if {$data ne ""} {
-            ::rmq::debug "Left over data in split frames, adding to the end of the frames"
             lappend frames $data
         }
 
-        ::rmq::debug "Received [llength $frames] frames"
         return $frames
     }
 
@@ -755,7 +715,6 @@ oo::define ::rmq::Connection {
     ##
 
     method connectionBlocked {data} {
-        ::rmq::debug "Connection.Blocked"
 
         set blocked 1
         set reason [::rmq::dec_short_string $data _]
@@ -765,7 +724,6 @@ oo::define ::rmq::Connection {
     }
 
     method connectionClose {{replyCode 200} {replyText "Normal"} {cID 0} {mID 0}} {
-        ::rmq::debug "Connection.Close"
         set replyCode [::rmq::enc_short $replyCode]
         set replyText [::rmq::enc_short_string $replyText]
         set classID [::rmq::enc_short $cID]
@@ -784,19 +742,16 @@ oo::define ::rmq::Connection {
         dict set closeD classID [::rmq::dec_short $data _]
         dict set closeD methodID [::rmq::dec_short [string range $data 2 end] _]
 
-        ::rmq::debug "Connection.Close ($closeD)"
 
         # send Connection.Close-Ok
         my sendConnectionCloseOk
     }
 
     method connectionCloseOk {data} {
-        ::rmq::debug "Connection.CloseOk"
         my closeConnection
     }
 
     method connectionOpen {} {
-        ::rmq::debug "Connection.Open vhost [$login getVhost]"
 
         set vhostVal [::rmq::enc_short_string [$login getVhost]]
         set reserve1 [::rmq::enc_short_string ""]
@@ -813,7 +768,6 @@ oo::define ::rmq::Connection {
         set retries 0
         set connected 1
 
-        ::rmq::debug "Connection.OpenOk: connection now established"
 
         # call user supplied callback for when Connection is ready for use
         if {$connectedCB ne ""} {
@@ -822,14 +776,12 @@ oo::define ::rmq::Connection {
     }
 
     method connectionSecure {data} {
-        ::rmq::debug "Connection.Secure"
 
         set challenge [::rmq::dec_long_string $data _]
         my connectionSecureOk $challenge
     }
 
     method connectionSecureOk {challenge} {
-        ::rmq::debug "Connection.SecureOk"
 
         set resp [::rmq::enc_long_string [$login saslResponse]]
         set payload [::rmq::enc_method 10 21 $resp]
@@ -841,7 +793,6 @@ oo::define ::rmq::Connection {
     #  sending of AMQP Connection.CloseOk method from receiving it
     #
     method sendConnectionCloseOk {} {
-        ::rmq::debug "Sending Connection.CloseOk"
         set methodData [::rmq::enc_method $::rmq::CONNECTION_CLASS \
             $::rmq::CONNECTION_CLOSE_OK ""]
         my send [::rmq::enc_frame $::rmq::FRAME_METHOD 0 $methodData]
@@ -855,7 +806,6 @@ oo::define ::rmq::Connection {
     #  in the server's data
     #
     method connectionStart {data} {
-        ::rmq::debug "Connection.Start"
 
         # starts with a protocol major and minor version
         binary scan $data cc versionMajor versionMinor
@@ -890,7 +840,6 @@ oo::define ::rmq::Connection {
     #  goes wrong
     #
     method connectionStartOk {params} {
-        ::rmq::debug "Connection.StartOk"
 
         # first need to include the client properties
         set clientProps [dict create]
@@ -942,7 +891,6 @@ oo::define ::rmq::Connection {
 
         # verify that the mechanism provided by this library supported by server
         if {[string first $::rmq::DEFAULT_MECHANISM [dict get $params mechanisms]] == -1} {
-            ::rmq::debug "tclrmq mechanism of $::rmq::DEFAULT_MECHANISM not supported by server [dict get $params mechanisms]"
             return [my closeConnection]
         }
         set mechanismVal [::rmq::enc_short_string $::rmq::DEFAULT_MECHANISM]
@@ -952,7 +900,6 @@ oo::define ::rmq::Connection {
 
         # Verify that the locale matches what we support
         if {$locale ne [dict get $params locale]} {
-            ::rmq::debug "Our locale of $locale not supported by server [dict get $params locale]"
             return [my closeConnection]
         }
         set localeVal [::rmq::enc_short_string $locale]
@@ -963,7 +910,6 @@ oo::define ::rmq::Connection {
     }
 
     method connectionTune {data} {
-        ::rmq::debug "Connection.Tune"
 
         set channelMax [::rmq::dec_short $data _]
         if {$channelMax == 0} {
@@ -978,12 +924,10 @@ oo::define ::rmq::Connection {
         }
 
         set heartbeat [::rmq::dec_ushort [string range $data 6 end] _]
-        ::rmq::debug "Heartbeat interval of $heartbeat secs suggested by the server"
         my connectionTuneOk $channelMax $frameMax $heartbeat
     }
 
     method connectionTuneOk {channelMax frameMax heartbeat} {
-        ::rmq::debug "Connection.TuneOk"
 
         set channelMax [::rmq::enc_short $channelMax]
         set frameMax [::rmq::enc_ulong $frameMax]
@@ -995,7 +939,6 @@ oo::define ::rmq::Connection {
 
         # after heartbeats have been negotiated, setup a loop to send them
         if {$heartbeatSecs != 0} {
-            ::rmq::debug "Scheduling first heartbeat check..."
             set heartbeatID [after [expr {1000 * $heartbeatSecs / 2}] [list [self] sendHeartbeat]]
         }
 
@@ -1003,7 +946,6 @@ oo::define ::rmq::Connection {
     }
 
     method connectionUnblocked {data} {
-        ::rmq::debug "Connection.Unblocked"
 
         set blocked 0
         if {$blockedCB ne ""} {
