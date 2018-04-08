@@ -492,7 +492,7 @@ and after calling the _onClose_ callback.
 
 ### closeConnection
 
-Takes an optional boolean argument, _callCloseCB_, which defaults to 1.  Closes the associated _Connection_ object and if _callCloseCB_ is true, any callback set with _onClose_ is invoked, otherwise it is ignored.
+Takes an optional boolean argument, _callCloseCB_, which defaults to 1.  Closes the associated _Connection_ object and if _callCloseCB_ is true, any callback set with the _Connection_ object's _onClose_ method is invoked, otherwise it is ignored.
 
 ### closing?
 

@@ -104,8 +104,8 @@ oo::class create ::rmq::Channel {
         set closeD [dict create]
     }
 
-    method closeConnection {} {
-        $connection closeConnection
+    method closeConnection {{callCloseCB 1}} {
+        $connection closeConnection $callCloseCB
     }
 
     method closing? {} {
