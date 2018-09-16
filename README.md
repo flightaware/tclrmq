@@ -58,8 +58,8 @@ vwait die
 
 The _Channel_ class is where most of the action happens.  The vast majority of AMQP
 methods refer to a specific channel.  After the Connection object has gone through
-the opening handshake and calls its _onOpen_ handshake a _Channel_ object can be
-created by passing 
+the opening handshake and calls its _onOpen_ callback, a _Channel_ object can be
+created by passing the _Connection_ object to the _Channel_ class' constructor.
 
 ```tcl
 # Assume the following proc has been set as the Connection object's 
