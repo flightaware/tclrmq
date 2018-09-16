@@ -356,7 +356,11 @@ The constructor takes the following arguments (all optional):
 
 * __-debug__
 
-    Either 0 or 1, but defaults to 0.  Controls whether or not debug statements are printed to stderr detailing the operations of the library.
+    Either 0 or 1, but defaults to 0.  Controls whether or not debug statements are passed to `-logCommand` detailing the operations of the library.
+
+* __-logCommand__
+
+    If the `-debug` option is true, the value of this argument will be passed debugging statements detailing the operations of the library.  The specified `-logCommand` must take a string argument containing a single debugging statement.  Defaults to `puts stderr`.
 
 ### attemptReconnect
 

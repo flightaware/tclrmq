@@ -1,4 +1,4 @@
-package provide rmq 1.3.8
+package provide rmq 1.4.0
 
 package require TclOO
 package require tls
@@ -6,10 +6,10 @@ package require tls
 namespace eval rmq {
     namespace export Connection
 
-    proc debug {msg} {
+    proc debug {logCommand msg} {
         if {$::rmq::debug} {
             set ts [clock format [clock seconds] -format "%D %T" -gmt 1]
-            puts stderr "\[DEBUG\] ($ts): $msg"
+            {*}$::rmq::logCommand "\[DEBUG\] ($ts): $msg"
         }
     }
 
@@ -135,6 +135,7 @@ oo::class create ::rmq::Connection {
         set options(-maxBackoff) $::rmq::DEFAULT_MAX_BACKOFF
         set options(-maxReconnects) $::rmq::DEFAULT_MAX_RECONNECT_ATTEMPTS
         set options(-debug) 0
+		set options(-logCommand) "puts stderr"
 
         foreach {opt val} $args {
             if {[info exists options($opt)]} {
@@ -146,8 +147,10 @@ oo::class create ::rmq::Connection {
             set [string trimleft $opt -] $options($opt)
         }
 
-        # whether we are in debug mode
+        # whether we are in debug mode and the
+        # log command to use if we are
         set ::rmq::debug $debug
+		set ::rmq::logCommand $logCommand
 
         # socket variable
         set sock ""
@@ -1011,6 +1014,5 @@ oo::define ::rmq::Connection {
         }
     }
 }
-
 
 # vim: ts=4:sw=4:sts=4:noet

@@ -1,4 +1,4 @@
-package provide rmq 1.3.8
+package provide rmq 1.4.0
 
 namespace eval rmq {
     # Frame types
@@ -291,7 +291,7 @@ namespace eval rmq {
 
     # client properties
     set PRODUCT tclrmq
-    set VERSION 1.3.8
+    set VERSION 1.4.0
 }
 
 # vim: ts=4:sw=4:sts=4:noet
