@@ -1,4 +1,4 @@
-package provide rmq 1.4.0
+package provide rmq 1.4.1
 
 package require TclOO
 package require tls
@@ -6,7 +6,7 @@ package require tls
 namespace eval rmq {
     namespace export Connection
 
-    proc debug {logCommand msg} {
+    proc debug {msg} {
         if {$::rmq::debug} {
             set ts [clock format [clock seconds] -format "%D %T" -gmt 1]
             {*}$::rmq::logCommand "\[DEBUG\] ($ts): $msg"
@@ -149,12 +149,13 @@ oo::class create ::rmq::Connection {
 
         # whether we are in debug mode and the
         # log command to use if we are
-        set ::rmq::debug $debug
+		set ::rmq::debug $debug
 		set ::rmq::logCommand $logCommand
 
         # socket variable
         set sock ""
-        set tls 0
+
+		# no TLS options yet
         array set tlsOpts {}
 
         # not currently connected
@@ -196,8 +197,8 @@ oo::class create ::rmq::Connection {
 
     destructor {
         catch {close $sock}
-            after cancel $heartbeatID
-            after cancel $sockHealthPollingID
+		after cancel $heartbeatID
+		after cancel $sockHealthPollingID
     }
 
     # attempt to reconnect to the server using
@@ -300,10 +301,11 @@ oo::class create ::rmq::Connection {
                 set sock [socket -async $host $port]
             } else {
                 ::rmq::debug "Making TLS connection with options: [array get tlsOpts]"
-                set sock [tls::socket {*}[concat [list -async $host $port] [array get tlsOpts]]]
+                set sock [tls::socket {*}[concat [array get tlsOpts] [list -async $host $port]]]
             }
 
             # configure the socket
+            ::rmq::debug "Opening connection to ${host}:${port}"
             chan configure $sock \
                 -blocking 0 \
                 -buffering none \
