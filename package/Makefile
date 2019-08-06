@@ -21,7 +21,7 @@ install:    install-package
 install-package:    pkgIndex.tcl
 	-mkdir -p $(PACKAGELIBDIR)
 	cp *.tcl $(PACKAGELIBDIR)
-	cd $(PACKAGELIBDIR); echo "package require tclrmq" | tclsh
+	cd $(PACKAGELIBDIR); echo "package require rmq" | tclsh
 	cd $(PACKAGELIBDIR); echo "pkg_mkIndex -verbose . *.tcl" | tclsh
 
 clean:
