@@ -135,7 +135,7 @@ oo::class create ::rmq::Connection {
         set options(-maxBackoff) $::rmq::DEFAULT_MAX_BACKOFF
         set options(-maxReconnects) $::rmq::DEFAULT_MAX_RECONNECT_ATTEMPTS
         set options(-debug) 0
-	    set options(-logCommand) "puts stderr"
+	set options(-logCommand) "puts stderr"
 
         foreach {opt val} $args {
             if {[info exists options($opt)]} {
@@ -155,7 +155,7 @@ oo::class create ::rmq::Connection {
         # socket variable
         set sock ""
 
-	    # no TLS options yet
+	# no TLS options yet
         array set tlsOpts {}
 
         # not currently connected
@@ -661,7 +661,7 @@ oo::class create ::rmq::Connection {
     }
 
     method ScheduleHeartbeatCheck {} {
-	    after cancel $heartbeatID
+	after cancel $heartbeatID
         set heartbeatID [after [expr {1000 * $heartbeatSecs / 2}] [list [self] sendHeartbeat]]
     }
 
@@ -685,7 +685,7 @@ oo::class create ::rmq::Connection {
         # schedule another check before proceeding
         my ScheduleHeartbeatCheck
 
-	    # figure out how long it's been since we've seen any activity
+	# figure out how long it's been since we've seen any activity
         set now [clock seconds]
         set sinceLastRead [expr {$now - $lastRead}]
         set sinceLastSend [expr {$now - $lastSend}]
@@ -856,7 +856,7 @@ oo::define ::rmq::Connection {
     method sendConnectionCloseOk {} {
         ::rmq::debug "Sending Connection.CloseOk"
         set methodData [::rmq::enc_method $::rmq::CONNECTION_CLASS \
-            $::rmq::CONNECTION_CLOSE_OK ""]
+                                          $::rmq::CONNECTION_CLOSE_OK ""]
         my send [::rmq::enc_frame $::rmq::FRAME_METHOD 0 $methodData]
         my closeConnection
     }
@@ -995,7 +995,7 @@ oo::define ::rmq::Connection {
 
         if {$heartbeatSecs != 0} {
             ::rmq::debug "Scheduling first heartbeat check in [expr {$heartbeatSecs / 2}] secs..."
-	        my ScheduleHeartbeatCheck
+	    my ScheduleHeartbeatCheck
         }
 
         my connectionTuneOk $channelMax $frameMax $heartbeat
