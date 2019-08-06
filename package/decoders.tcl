@@ -1,4 +1,4 @@
-package provide rmq 1.4.1
+package provide rmq 1.4.2
 
 namespace eval rmq {
 
@@ -256,7 +256,6 @@ namespace eval rmq {
     }
 
     proc dec_method {mClass mID} {
-        # TODO: use constants instead of raw ints
         if {$mClass eq $::rmq::CONNECTION_CLASS} {
             return "connection[::rmq::dec_connection_method $mID]"
         } elseif {$mClass eq $::rmq::CHANNEL_CLASS} {

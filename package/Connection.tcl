@@ -1,4 +1,4 @@
-package provide rmq 1.4.1
+package provide rmq 1.4.2
 
 package require TclOO
 package require tls
@@ -135,7 +135,7 @@ oo::class create ::rmq::Connection {
         set options(-maxBackoff) $::rmq::DEFAULT_MAX_BACKOFF
         set options(-maxReconnects) $::rmq::DEFAULT_MAX_RECONNECT_ATTEMPTS
         set options(-debug) 0
-		set options(-logCommand) "puts stderr"
+	    set options(-logCommand) "puts stderr"
 
         foreach {opt val} $args {
             if {[info exists options($opt)]} {
@@ -149,13 +149,13 @@ oo::class create ::rmq::Connection {
 
         # whether we are in debug mode and the
         # log command to use if we are
-		set ::rmq::debug $debug
-		set ::rmq::logCommand $logCommand
+        set ::rmq::debug $debug
+        set ::rmq::logCommand $logCommand
 
         # socket variable
         set sock ""
 
-		# no TLS options yet
+	    # no TLS options yet
         array set tlsOpts {}
 
         # not currently connected
@@ -197,8 +197,8 @@ oo::class create ::rmq::Connection {
 
     destructor {
         catch {close $sock}
-		after cancel $heartbeatID
-		after cancel $sockHealthPollingID
+        after cancel $heartbeatID
+        after cancel $sockHealthPollingID
     }
 
     # attempt to reconnect to the server using
@@ -660,6 +660,11 @@ oo::class create ::rmq::Connection {
         }
     }
 
+    method ScheduleHeartbeatCheck {} {
+	    after cancel $heartbeatID
+        set heartbeatID [after [expr {1000 * $heartbeatSecs / 2}] [list [self] sendHeartbeat]]
+    }
+
     #
     # send binary data to the RabbitMQ server
     #
@@ -677,6 +682,10 @@ oo::class create ::rmq::Connection {
     # send a heartbeat to the RabbitMQ server
     #
     method sendHeartbeat {} {
+        # schedule another check before proceeding
+        my ScheduleHeartbeatCheck
+
+	    # figure out how long it's been since we've seen any activity
         set now [clock seconds]
         set sinceLastRead [expr {$now - $lastRead}]
         set sinceLastSend [expr {$now - $lastSend}]
@@ -684,7 +693,9 @@ oo::class create ::rmq::Connection {
 
         # despite being able to send data on the socket, if we haven't heard anything
         # from the server for > 2 heartbeat intervals, we need to disconnect
-        if {$sinceLastRead > 2 * $heartbeatSecs} {
+        # this behavior comes directly from the spec's section about heartbeats:
+        #  https://www.rabbitmq.com/resources/specs/amqp0-9-1.pdf
+        if {$sinceLastRead > $heartbeatSecs * 2} {
             ::rmq::debug "Been more than 2 heartbeat intervals without socket read activity, shutting down connection"
             return [my closeConnection]
         }
@@ -692,13 +703,10 @@ oo::class create ::rmq::Connection {
         # since we check whether to send a heartbeat every heartbeatSecs / 2 secs
         # need to check if we'd be over the heartbeat interval at the end of the
         # after wait if we did not send a heartbeat right now
-        if {max($sinceLastRead, $sinceLastSend) >= $heartbeatSecs >> 1} {
+        if {max($sinceLastRead, $sinceLastSend) * 2 >= $heartbeatSecs} {
             ::rmq::debug "Sending heartbeat frame: long enough since last send or last read"
             return [my send [::rmq::enc_frame $::rmq::FRAME_HEARTBEAT 0 ""]]
         }
-
-        # set another timer for this method
-        set heartbeatID [after [expr {1000 * $heartbeatSecs / 2}] [list [self] sendHeartbeat]]
     }
 
     #
@@ -983,7 +991,13 @@ oo::define ::rmq::Connection {
         }
 
         set heartbeat [::rmq::dec_ushort [string range $data 6 end] _]
-        ::rmq::debug "Heartbeat interval of $heartbeat secs suggested by the server"
+        ::rmq::debug "Heartbeat interval of $heartbeat secs suggested by the server (our value $heartbeatSecs)"
+
+        if {$heartbeatSecs != 0} {
+            ::rmq::debug "Scheduling first heartbeat check in [expr {$heartbeatSecs / 2}] secs..."
+	        my ScheduleHeartbeatCheck
+        }
+
         my connectionTuneOk $channelMax $frameMax $heartbeat
     }
 
@@ -997,12 +1011,6 @@ oo::define ::rmq::Connection {
 
         set payload [::rmq::enc_method 10 31 $methodData]
         my send [::rmq::enc_frame 1 0 $payload]
-
-        # after heartbeats have been negotiated, setup a loop to send them
-        if {$heartbeatSecs != 0} {
-            ::rmq::debug "Scheduling first heartbeat check..."
-            set heartbeatID [after [expr {1000 * $heartbeatSecs / 2}] [list [self] sendHeartbeat]]
-        }
 
         my connectionOpen
     }
