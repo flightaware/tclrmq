@@ -1,4 +1,4 @@
-package provide rmq 1.4.3
+package provide rmq 1.4.4
 
 package require TclOO
 
@@ -149,14 +149,14 @@ oo::class create ::rmq::Channel {
             if {$lastBasicMethod eq "deliver"} {
                 set cTag [dict get [lindex $consumerCBArgs 0] consumerTag]
                 if {[info exists consumerCBs($cTag)]} {
-                    after idle [list after 0 [list {*}$consumerCBs($cTag) [self] {*}$consumerCBArgs]]
+                    {*}$consumerCBs($cTag) [self] {*}$consumerCBArgs
                 } else {
                     ::rmq::debug "Delivered message for consumer tag $cTag, but no callback set"
                 }
             } elseif {$lastBasicMethod eq "get"} {
-                after idle [list after 0 [list my callback basicDeliver {*}$consumerCBArgs]]
+                my callback basicDeliver {*}$consumerCBArgs
             } elseif {$lastBasicMethod eq "return"} {
-                after idle [list after 0 [list my callback basicReturn {*}$consumerCBArgs]]
+                my callback basicReturn {*}$consumerCBArgs
             } else {
                 ::rmq::debug "Received enqueued data ($consumerCBArgs) but no callback set"
             }
