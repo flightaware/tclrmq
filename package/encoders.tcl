@@ -8,7 +8,7 @@
 ##  will pass through a proc contained in this file
 ##
 ##
-package provide rmq 1.4.4
+package provide rmq 1.4.5
 
 namespace eval rmq {
 
@@ -34,14 +34,13 @@ namespace eval rmq {
     #  table binary string
     #  this proc attempts to convert any values passed to it
     #  using the string is command
-    #  integers below 2**16 - 1 will be encoded as a ushort
-    #  all other integers as a long with every integer value
-    #  assumed to be unsigned
+    #  integers below 2**8 - 1 will be encoded as a short short
+    #  integers below 2**16 - 1 will be encoded as a short
+    #  integers larger than that will be encoded as longs
     #  all double values will be converted to a float
     #  booleans are checked after ints and doubles, so a textual
     #  true or false value must be used to get a boolean conversion
-    #  strings less than or equal to 128 chars are short strings
-    #  all other strings encoded as long strings
+    #  string values are encoded as long strings
     #
     #  takes an optional second argument to ignore certain fields
     #  if the type recognition offered by the proc is insufficient
@@ -53,22 +52,18 @@ namespace eval rmq {
                 set v $v
             } elseif {[string is integer -strict $v]} {
                 if {$v <= 2**8 - 1} {
-                    set v [::rmq::enc_byte $v]
+                    set v "[::rmq::enc_field_value short-short-int][::rmq::enc_short_short $v]"
                 } elseif {$v <= 2**16 - 1} {
-                    set v [::rmq::enc_ushort $v]
+                    set v "[::rmq::enc_field_value short-int][::rmq::enc_short $v]"
                 } else {
-                    set v [::rmq::enc_ulong $v]
+                    set v "[::rmq::enc_field_value long-int][::rmq::enc_long $v]"
                 }
             } elseif {[string is double -strict $v]} {
-                set v [::rmq::enc_float $v]
+                set v "[::rmq::enc_field_value float][::rmq::enc_float $v]"
             } elseif {[string is boolean -strict $v]} {
-                set v [::rmq::enc_boolean $v]
+                set v "[::rmq::enc_field_value boolean][::rmq::enc_boolean $v]"
             } elseif {[string is alnum $v]} {
-                if {[string length $v] <= 128} {
-                    set v [::rmq::enc_short_string $v]
-                } else {
-                    set v [::rmq::enc_long_string $v]
-                }
+                set v "[::rmq::enc_field_value long-string][::rmq::enc_long_string $v]"
             }
 
             append fieldStr "[::rmq::enc_short_string $k]$v"
@@ -95,9 +90,9 @@ namespace eval rmq {
         switch $typeDesc {
             boolean {return t}
             short-short-int {return b}
-            short-short-unint {return B}
+            short-short-uint {return B}
             short-int {return U}
-            short-unint {return u}
+            short-uint {return u}
             long-int {return I}
             long-uint {return i}
             long-long-int {return L}
@@ -116,6 +111,10 @@ namespace eval rmq {
 
     proc enc_byte {value} {
         return [binary format cu $value]
+    }
+
+    proc enc_boolean {boolean} {
+        return [binary format c [string is true -strict $boolean]]
     }
 
     proc enc_short_string {str} {
@@ -140,6 +139,14 @@ namespace eval rmq {
         error "Need to implement field array encoding"
     }
 
+    proc enc_short_short {int} {
+        return [binary format c $int]
+    }
+
+    proc enc_short_short_uint {int} {
+        return [binary format cu $int]
+    }
+
     proc enc_short {int} {
         return [binary format S $int]
     }
@@ -161,11 +168,11 @@ namespace eval rmq {
     }
 
     proc enc_float {float} {
-        return [binary format f $float]
+        return [binary format R $float]
     }
 
     proc enc_double {double} {
-        return [binary format d $double]
+        return [binary format Q $double]
     }
 
     proc enc_timestamp {timestamp} {
