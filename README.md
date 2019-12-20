@@ -730,6 +730,10 @@ Takes the following arguments:
 
     - QUEUE_DECLARE_NO_WAIT
 
+* __qArgs__
+
+    Optional dictionary of queue declare arguments.  Allows for setting features like TTLs, max lengths or a single consumer policy.
+
 To set a callback on a queue declare, use the _on_ method with _queueDeclareOk_ as the first argument.
 Callback takes the _Channel_ object, the queue name (especially important for exclusive queues), message count,
 number of consumers on the queue.
