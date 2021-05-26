@@ -328,7 +328,7 @@ The constructor takes the following arguments (all optional):
 
 * __-heartbeatSecs__
 
-    Interval in seconds for sending out heartbeat frames.  A value of 0 means no heartbeats will be sent.
+    Interval in seconds for sending out heartbeat frames.  Defaults to 60 seconds. A value of 0 means no heartbeats will be sent.
 
 * __-blockedConnections__
 
