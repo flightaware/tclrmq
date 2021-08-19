@@ -4,11 +4,11 @@
 # basically we make a pkgIndex.tcl package file and install stuff
 #
 
-PACKAGE=tclrmq
-PREFIX=/usr/local
-TCLSH=tclsh
-PACKAGELIBDIR=$(PREFIX)/lib/$(PACKAGE)
-LIBSOURCES= Channel.tcl Connection.tcl Login.tcl encoders.tcl decoders.tcl constants.tcl 
+PACKAGE         = tclrmq
+PREFIX         ?= /usr/local
+TCLSH          ?= tclsh
+PACKAGELIBDIR   =$(PREFIX)/lib/$(PACKAGE)
+LIBSOURCES      = Channel.tcl Connection.tcl Login.tcl encoders.tcl decoders.tcl constants.tcl 
 
 all:    pkgIndex.tcl
 	@echo "'make install' to install"
